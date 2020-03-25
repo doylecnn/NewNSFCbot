@@ -1,0 +1,45 @@
+<html>
+<head>
+    <title>NF_FC: user</title>
+    <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <script type="text/javascript">        
+      </script>
+</head>
+<body>
+    <div><a href="/logout">logout</a>
+        <a href="/islands">islands</a></div>
+    <div>username {{.name}}</div>
+    {{if .NSAccounts}}
+    <ul>
+        {{range .NSAccounts}}
+        <li><span><label for="nsaccountname">Nintendo Account: </label><input name="nsaccountname" type="text" value="{{.Name}}"/></span><span><label for="nsfriendcode">Friend Code: </label><input name="nsfriendcode" type="text" value="{{.FC}}"/></span></li>
+        {{end}}
+    </ul>
+    {{end}}
+    {{if .island}}
+    <div>
+        <span>岛名:</span><span>{{.island.Name}}</span>
+        {{if eq .island.Hemisphere 0}}
+            <span>北半球</span>
+        {{else}}
+            <span>南半球</span>
+        {{end}}
+        {{if .island.AirportIsOpen}}
+            <span>正开放</span>
+            {{if .island.AirportPassword}}
+                <span>密码：</span><span>{{.island.AirportPassword}}</span>
+            {{end}}
+        {{else}}
+            <span>已关闭</span>
+        {{end}}
+        <span>水果/说明:</span><ul>{{range .island.Fruits}}<li>{{.}}</li>{{end}}</ul>
+
+        <ol>
+            {{range .pricehistory}}
+            <li><span>{{.Date}}</span><span>{{.Price}}铃钱/颗</span></li>
+            {{end}}
+        </ol>
+    </div>
+    {{end}}
+</body>
+</html>

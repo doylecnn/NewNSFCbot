@@ -1,0 +1,102 @@
+<html>
+<head>
+    <title>public island list</title>
+    <style>
+        .name {
+            font:bold;
+        }
+        .card{
+            border: 1px solid;
+        }
+    </style>
+    <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <script type="text/javascript">
+    $(function() {
+        $("#btn_viewopenonly").click(function() {
+            $("div.card").each(function( i,elm ) {
+                if($(elm).find("li.airportstatus>span.name").text()=="已关闭"){
+                    $(elm).hide();
+                }
+            });
+        });
+        $("#btn_viewall").click(function() {
+            $("div.card").show();
+        });
+        $("#notifyswitch").click(function(){
+            $("#notify").toggle()
+        })
+        $("#btn_viewopenonly").click();
+        $("#notifyswitch").click();
+    })    
+    </script>
+</head>
+<body>
+    <div><a href="/logout">logout</a><a href="/user:{{.uid}}">myinfo</a></div>
+    <div>
+        <span id="notifyswitch">通知信息，已折叠。点此展开。再点折叠。</span>
+        <div id="notify">
+            <ul>
+                <li>使用tgbot： NS_FC_bot 的 dtcj 更新大头菜最新报价</li>
+                <li>使用tgbot： NS_FC_bot 的 open_airport/open_island 设定岛屿开放</li>
+                <li>使用tgbot： NS_FC_bot 的 close_airport/close_island 设定岛屿关闭</li>
+                <li>使用tgbot： NS_FC_bot 的 add_island 添加你的岛屿信息。参数：
+                    <ol>
+                        <li>岛屿名称</li>
+                        <li>N：北半球，S：南半球</li>
+                        <li>其它参数：可以留水果或其它信息</li>
+                    </ol>
+                </li>
+                <li>重要：本页面信息仅供参考。由于信息有用户自己在telegram 上通过bot 指令设置，所以可能与事实不符（比如明明用户岛屿关闭中，却显示已开放）</li>
+            </ul>
+        </div>
+    </div>
+    <div><input type="button" id="btn_viewopenonly" value="只看正开放"/>
+        <input type="button" id="btn_viewall" value="All"/>
+    </div>
+    {{range $i, $u := .users}}
+    <div class="card">
+        <div class="userinfo">
+            <div>TGName <span class="name">{{$u.Name}}</span></div>
+            {{if $u.NSAccounts}}
+            <ul>
+                {{range $u.NSAccounts}}
+                <li>Nintendo Account: <span class="name">{{$u.Name}}</span></li>
+                {{end}}
+            </ul>
+            {{end}}
+        </div>
+        <div class="islandinfo">
+            <ul>
+                <li><span>岛名: </span><span class="name">{{$u.Island.Name}}</span></li>
+                <li><span>位于: </span>
+                    {{if eq $u.Island.Hemisphere 0}}
+                        <span class="name">北半球</span>
+                    {{else}}
+                        <span class="name">南半球</span>
+                    {{end}}
+                </li>
+                <li class="airportstatus">机场状态：
+                    {{if $u.Island.AirportIsOpen}}
+                        <span class="name">正开放</span>
+                        {{if $u.Island.AirportPassword}}
+                            <span>密码：</span><span class="name">{{$u.Island.AirportPassword}}</span>
+                        {{end}}
+                    {{else}}
+                        <span class="name">已关闭</span>
+                    {{end}}
+                </li>
+                <li></li>
+                {{if index $.priceOutDate $i}}
+                    菜价已过时（超过12小时未更新）：
+                {{else}}
+                    最新菜价：
+                {{end}}
+                <span class="name">{{$u.Island.LastPrice.Price}}铃钱/颗</span><span class="name" style="font-size: small;">({{$u.Island.LastPrice.Date}})</span></li>
+                <li>
+                    <span>水果/简要说明:</span><ul>{{range $u.Island.Fruits}}<li><span class="name">{{.}}</span></li>{{end}}</ul>
+                </li>
+        </div>
+    </div>
+    {{end}}
+</body>
+</html>

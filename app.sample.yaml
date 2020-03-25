@@ -1,0 +1,9 @@
+runtime: go113
+
+env_variables:
+  BOT_TOKEN: 'bot token'
+  BOT_ADMIN: 'admin tg id'
+  PROJECT_ID: 'project id'
+
+main: ./cmd
+  
