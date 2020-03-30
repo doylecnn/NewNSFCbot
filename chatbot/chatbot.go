@@ -43,6 +43,7 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 /myfc 显示自己的所有fc
 /sfc 搜索你回复或at 的人的fc
 /fc 与sfc 相同
+/fclist 列出本群所有人的fc 列表
 /whois name 查找NSAccount/Island是 name 的用户
 /addisland 添加你的动森岛：/addisland 岛名 N/S 岛主 其它信息
 /sac 搜索你回复或at 的人的AnimalCrossing 信息
@@ -60,6 +61,7 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 	router.HandleFunc("myfc", cmdMyFC)
 	router.HandleFunc("sfc", cmdSearchFC)
 	router.HandleFunc("fc", cmdSearchFC)
+	router.HandleFunc("fclist", cmdListFriendCodes)
 
 	// Animal Crossing: New Horizons
 	router.HandleFunc("islands", cmdListIslands)

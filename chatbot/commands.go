@@ -274,3 +274,39 @@ func cmdWebLogin(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfi
 			Text: fmt.Sprintf("https://%s.appspot.com/login", _projectID)},
 		nil
 }
+
+func cmdListFriendCodes(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error) {
+	ctx := context.Background()
+	users, err := storage.GetAllUsers(ctx)
+	if err != nil {
+		err = Error{InnerError: err,
+			ReplyText: "查询时出错",
+		}
+		return
+	}
+	var rst []string
+	for _, u := range users {
+		var chatmember tgbotapi.ChatMember
+		chatmember, err = tgbot.GetChatMember(tgbotapi.ChatConfigWithUser{ChatID: message.Chat.ID, UserID: u.ID})
+		if err != nil || !(chatmember.IsMember() || chatmember.IsCreator() || chatmember.IsAdministrator()) {
+			continue
+		}
+		accounts, err := u.GetAccounts(ctx)
+		if err != nil {
+			continue
+		}
+		userinfo := u.Name
+		for _, a := range accounts {
+			userinfo += fmt.Sprintf("\n\t%s", a.String())
+		}
+		rst = append(rst, userinfo)
+	}
+
+	return &tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: true},
+			Text: strings.Join(rst, "\n")},
+		nil
+}
