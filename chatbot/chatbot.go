@@ -43,12 +43,14 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 /myfc 显示自己的所有fc
 /sfc 搜索你回复或at 的人的fc
 /fc 与sfc 相同
-/addisland 添加你的动森岛：/addisland 岛名 N/S 其它信息
+/whois name 查找NSAccount/Island是 name 的用户
+/addisland 添加你的动森岛：/addisland 岛名 N/S 岛主 其它信息
+/sac 搜索你回复或at 的人的AnimalCrossing 信息
 /myisland 显示自己的岛信息
 /open_island 开放自己的岛 相同指令 /open_airport
 /close_island 关闭自己的岛 相同指令 /close_airport
-/dtcj 更新大头菜价格
-/gj 大头菜最新价格
+/dtcj 更新大头菜价格, 不带参数时，和 /gj 相同
+/gj 大头菜最新价格，只显示同群中价格从高到低前10
 /islands 提供网页展示本bot 记录的所有动森岛屿信息
 /login 登录到本bot 的web 界面，更方便查看信息
 /help 查看本帮助信息`},
@@ -69,6 +71,9 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 	router.HandleFunc("close_island", cmdCloseIsland)
 	router.HandleFunc("dtcj", cmdDTCPriceUpdate)
 	router.HandleFunc("gj", cmdDTCMaxPriceInGroup)
+	router.HandleFunc("sac", cmdSearchAnimalCrossingInfo)
+
+	router.HandleFunc("whois", cmdWhois)
 
 	// web login
 	router.HandleFunc("login", cmdWebLogin)

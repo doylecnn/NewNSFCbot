@@ -2,7 +2,9 @@ package chatbot
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,10 +25,14 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageCo
 		username = message.From.FirstName + " " + message.From.LastName
 	}
 	args := strings.Split(argstr, " ")
-	if len(args) < 2 {
-		return
+	if len(args) < 3 {
+		return nil, Error{InnerError: err,
+			ReplyText: `/addisland 详细语法：
+/addisland 命令至少需要3个参数，第一个是岛的名字，第二个是南北半球，第三个是岛主，所有参数使用空格分割
+南北半球请使用 N 或 S 表示：N 表示北半球，S 表示南半球`,
+		}
 	}
-	islandName := args[0]
+	islandName := strings.TrimSpace(args[0])
 	var hemisphere int
 	if args[1] == "N" {
 		hemisphere = 0
@@ -37,7 +43,8 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageCo
 			ReplyText: "请使用 N 表示北半球，S 表示南半球",
 		}
 	}
-	fruits := args[2:]
+	owner := strings.TrimSpace(args[2])
+	fruits := args[3:]
 
 	var island *storage.Island
 	ctx := context.Background()
@@ -59,13 +66,14 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageCo
 		island.Name = islandName
 		island.Hemisphere = hemisphere
 		island.Fruits = fruits
+		island.Owner = owner
 		if err = u.SetAirportStatus(ctx, *island); err != nil {
 			return nil, Error{InnerError: err,
 				ReplyText: fmt.Sprintf("更新岛屿信息时出错"),
 			}
 		}
 	} else {
-		island = &storage.Island{Name: islandName, Hemisphere: hemisphere, AirportIsOpen: false, AirportPassword: "", Fruits: fruits}
+		island = &storage.Island{Name: islandName, Hemisphere: hemisphere, AirportIsOpen: false, AirportPassword: "", Fruits: fruits, Owner: owner}
 		if err = u.AddAnimalCrossingIsland(ctx, *island); err != nil {
 			return nil, Error{InnerError: err,
 				ReplyText: fmt.Sprintf("记录岛屿时出错"),
@@ -236,7 +244,7 @@ func cmdListIslands(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageCo
 func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error) {
 	pricestr := strings.TrimSpace(message.CommandArguments())
 	if len(pricestr) == 0 {
-		return
+		return cmdDTCMaxPriceInGroup(message)
 	}
 
 	price, err := strconv.ParseInt(pricestr, 10, 64)
@@ -273,7 +281,7 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage *tgbotapi.Me
 		}
 	}
 
-	var dtcPrices []string
+	var priceUsers []*storage.User
 	for _, user := range users {
 		island, err := user.GetAnimalCrossingIsland(ctx)
 		if err != nil || island == nil {
@@ -289,7 +297,19 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage *tgbotapi.Me
 		if !strings.HasSuffix(island.Name, "岛") {
 			island.Name += "岛"
 		}
-		dtcPrices = append(dtcPrices, fmt.Sprintf("%s的岛：%s 上的菜价：%d", user.Name, island.Name, island.LastPrice.Price))
+		user.Island = *island
+		priceUsers = append(priceUsers, user)
+	}
+
+	var top10Price []*storage.User
+	sort.Slice(priceUsers, func(i, j int) bool {
+		return priceUsers[i].Island.LastPrice.Price > priceUsers[j].Island.LastPrice.Price
+	})
+	top10Price = priceUsers[:10]
+
+	var dtcPrices []string
+	for _, u := range top10Price {
+		dtcPrices = append(dtcPrices, fmt.Sprintf("%s的岛：%s 上的菜价：%d", u.Name, u.Island.Name, u.Island.LastPrice.Price))
 	}
 
 	return &tgbotapi.MessageConfig{
@@ -298,5 +318,197 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage *tgbotapi.Me
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
 			Text: strings.Join(dtcPrices, "\n")},
+		nil
+}
+
+func cmdWhois(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error) {
+	query := strings.TrimSpace(message.CommandArguments())
+	if len(query) == 0 {
+		return
+	}
+	ctx := context.Background()
+	users, err := storage.GetUsersByName(ctx, query)
+	if err != nil {
+		return nil, Error{InnerError: err,
+			ReplyText: "查询时出错",
+		}
+	}
+	if len(users) > 0 {
+		reply, err := userInfo(ctx, message.Chat.ID, users)
+		return &tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              message.Chat.ID,
+					ReplyToMessageID:    message.MessageID,
+					DisableNotification: true},
+				Text: reply},
+			err
+	}
+
+	users, err = storage.GetUsersByNSAccountName(ctx, query)
+	if err != nil {
+		return nil, Error{InnerError: err,
+			ReplyText: "查询时出错",
+		}
+	}
+	if len(users) > 0 {
+		reply, err := userInfo(ctx, message.Chat.ID, users)
+		return &tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              message.Chat.ID,
+					ReplyToMessageID:    message.MessageID,
+					DisableNotification: true},
+				Text: reply},
+			err
+	}
+
+	users, err = storage.GetUsersByAnimalCrossingIslandName(ctx, query)
+	if err != nil {
+		return nil, Error{InnerError: err,
+			ReplyText: "查询时出错",
+		}
+	}
+	if len(users) > 0 {
+		reply, err := userInfo(ctx, message.Chat.ID, users)
+		return &tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              message.Chat.ID,
+					ReplyToMessageID:    message.MessageID,
+					DisableNotification: true},
+				Text: reply},
+			err
+	}
+
+	users, err = storage.GetUsersByAnimalCrossingIslandOwnerName(ctx, query)
+	if err != nil {
+		return nil, Error{InnerError: err,
+			ReplyText: "查询时出错",
+		}
+	}
+	if len(users) > 0 {
+		reply, err := userInfo(ctx, message.Chat.ID, users)
+		return &tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              message.Chat.ID,
+					ReplyToMessageID:    message.MessageID,
+					DisableNotification: true},
+				Text: reply},
+			err
+	}
+
+	return &tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: true},
+			Text: "没找到。"},
+		nil
+}
+
+func userInfo(ctx context.Context, chatID int64, users []*storage.User) (replyMessage string, err error) {
+	var rst []string
+	for _, u := range users {
+		var chatmember tgbotapi.ChatMember
+		chatmember, err = tgbot.GetChatMember(tgbotapi.ChatConfigWithUser{ChatID: chatID, UserID: u.ID})
+		if err != nil || !(chatmember.IsMember() || chatmember.IsCreator() || chatmember.IsAdministrator()) {
+			continue
+		}
+		rst = append(rst, u.Name)
+		var accounts []storage.NSAccount
+		accounts, err = u.GetAccounts(ctx)
+		if err != nil {
+			err = Error{InnerError: err,
+				ReplyText: "查询时出错",
+			}
+			return
+		}
+		for _, a := range accounts {
+			rst = append(rst, a.String())
+		}
+	}
+	return strings.Join(rst, "\n"), nil
+}
+
+func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error) {
+	args := strings.TrimSpace(message.CommandArguments())
+	ctx := context.Background()
+	var us []*storage.User
+	if message.ReplyToMessage != nil && message.ReplyToMessage.From.ID != message.From.ID {
+		u, err := storage.GetUser(ctx, message.ReplyToMessage.From.ID)
+		if err != nil {
+			return nil, Error{InnerError: err,
+				ReplyText: "查询记录时出错了",
+			}
+		}
+		if u != nil {
+			us = []*storage.User{u}
+		}
+	} else if len(args) > 1 && strings.HasPrefix(args, "@") && args[1:] != message.From.UserName {
+		us, err = storage.GetUsersByName(ctx, args[1:])
+		if err != nil {
+			return nil, Error{InnerError: err,
+				ReplyText: "查询记录时出错了",
+			}
+		}
+	} else {
+		return nil, errors.New("not reply to any message or not at anyone")
+	}
+
+	if len(us) == 0 {
+		log.Info("users count == 0")
+		return &tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              message.Chat.ID,
+					ReplyToMessageID:    message.MessageID,
+					DisableNotification: true},
+				Text: "没有找到对方的记录"},
+			nil
+	}
+
+	var user *storage.User
+	for _, u := range us {
+		chatmember, err := tgbot.GetChatMember(tgbotapi.ChatConfigWithUser{ChatID: message.Chat.ID, UserID: u.ID})
+		if err != nil {
+			return nil, Error{InnerError: err,
+				ReplyText: "查询记录时出错了",
+			}
+		}
+		if chatmember.IsMember() || chatmember.IsCreator() || chatmember.IsAdministrator() {
+			user = u
+			break
+		}
+	}
+
+	if user == nil {
+		return &tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              message.Chat.ID,
+					ReplyToMessageID:    message.MessageID,
+					DisableNotification: true},
+				Text: "没有找到对方的记录"},
+			nil
+	}
+
+	island, err := user.GetAnimalCrossingIsland(ctx)
+	if err != nil {
+		return nil, Error{InnerError: err,
+			ReplyText: "查询记录时出错了",
+		}
+	}
+	if island == nil {
+		return &tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              message.Chat.ID,
+					ReplyToMessageID:    message.MessageID,
+					DisableNotification: true},
+				Text: "对方尚未登记过自己的 动森 岛屿"},
+			nil
+	}
+
+	return &tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: true},
+			Text: island.String()},
 		nil
 }

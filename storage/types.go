@@ -16,6 +16,7 @@ import (
 )
 
 var (
+	// ProjectID gae project id
 	ProjectID string
 )
 
@@ -129,6 +130,55 @@ func GetUsersByName(ctx context.Context, username string) (users []*User, err er
 		}
 		if u != nil {
 			users = append(users, u)
+		}
+	}
+	return users, nil
+}
+
+// GetUsersByNSAccountName get users by Nintendo Account name
+func GetUsersByNSAccountName(ctx context.Context, username string) (users []*User, err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return
+	}
+	defer client.Close()
+
+	users = []*User{}
+	iter := client.Collection("users").DocumentRefs(ctx)
+	for {
+		docRef, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		iter2 := docRef.Collection("ns_accounts").Where("name", "==", username).Documents(ctx)
+		for {
+			doc, err := iter2.Next()
+			if err == iterator.Done {
+				break
+			}
+			if err != nil {
+				return nil, err
+			}
+			if doc.Exists() {
+				userDoc, err := docRef.Get(ctx)
+				if userDoc.Exists() {
+					u := &User{}
+					if err = userDoc.DataTo(u); err != nil {
+						log.Warn(err)
+						return nil, err
+					}
+					if u != nil {
+						users = append(users, u)
+						break
+					}
+				}
+				if err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
 	return users, nil
@@ -276,6 +326,7 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) error {
 	return err
 }
 
+// GetPriceHistory get price history
 func GetPriceHistory(ctx context.Context, uid int) (priceHistory []PriceHistory, err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
 	if err != nil {
@@ -310,8 +361,133 @@ type Island struct {
 	AirportPassword string       `firestore:"AirportPassword"`
 	Fruits          []string     `firestore:"Fruits"`
 	LastPrice       PriceHistory `firestore:"LastPrice"`
+	Owner           string       `firestore:"owner,omitempty"`
 }
 
+// GetUsersByAnimalCrossingIslandName get users by island name
+func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string) (users []*User, err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	iter := client.Collection("users").DocumentRefs(ctx)
+	for {
+		docRef, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		iter2 := docRef.Collection("games").DocumentRefs(ctx)
+		for {
+			docRef2, err := iter2.Next()
+			if err == iterator.Done {
+				break
+			}
+			if err != nil {
+				return nil, err
+			}
+			if docRef2.ID == "animal_crossing" {
+				doc, err := docRef2.Get(ctx)
+				if err != nil {
+					return nil, err
+				}
+				if doc.Exists() {
+					var island Island
+					doc.DataTo(&island)
+					if strings.HasSuffix(name, "岛") {
+						r := []rune(name)
+						l := len(r)
+						if l > 1 {
+							name = string(r[:l-1])
+						}
+					}
+					if island.Name == name || island.Name == name+"岛" {
+						userDoc, err := docRef.Get(ctx)
+						if userDoc.Exists() {
+							u := &User{}
+							if err = userDoc.DataTo(u); err != nil {
+								log.Warn(err)
+								return nil, err
+							}
+							if u != nil {
+								users = append(users, u)
+								break
+							}
+						}
+						if err != nil {
+							return nil, err
+						}
+					}
+				}
+			}
+		}
+	}
+	return users, nil
+}
+
+// GetUsersByAnimalCrossingIslandOwnerName get users by island owner name
+func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string) (users []*User, err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	iter := client.Collection("users").DocumentRefs(ctx)
+	for {
+		docRef, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		iter2 := docRef.Collection("games").DocumentRefs(ctx)
+		for {
+			docRef2, err := iter2.Next()
+			if err == iterator.Done {
+				break
+			}
+			if err != nil {
+				return nil, err
+			}
+			if docRef2.ID == "animal_crossing" {
+				doc, err := docRef2.Get(ctx)
+				if err != nil {
+					return nil, err
+				}
+				if doc.Exists() {
+					var island Island
+					doc.DataTo(&island)
+					if island.Owner == name {
+						userDoc, err := docRef.Get(ctx)
+						if userDoc.Exists() {
+							u := &User{}
+							if err = userDoc.DataTo(u); err != nil {
+								log.Warn(err)
+								return nil, err
+							}
+							if u != nil {
+								users = append(users, u)
+								break
+							}
+						}
+						if err != nil {
+							return nil, err
+						}
+					}
+				}
+			}
+		}
+	}
+	return users, nil
+}
+
+// PriceHistory 大头菜 price history
 type PriceHistory struct {
 	Date  time.Time `firestore:"Date"`
 	Price int       `firestore:"Price"`
@@ -333,7 +509,7 @@ func (i Island) String() string {
 	} else {
 		hemisphere = "南"
 	}
-	return strings.TrimSpace(fmt.Sprintf("位于%s半球的岛屿：%s岛 %s\n岛屿有水果：%s", hemisphere, i.Name, airportstatus, strings.Join(i.Fruits, ", ")))
+	return strings.TrimSpace(fmt.Sprintf("位于%s半球的岛屿：%s岛, 岛民代表：%s。 %s\n岛屿有水果：%s", hemisphere, i.Name, i.Owner, airportstatus, strings.Join(i.Fruits, ", ")))
 }
 
 // Group Telegram Group
