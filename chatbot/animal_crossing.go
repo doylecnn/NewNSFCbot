@@ -282,34 +282,50 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage *tgbotapi.Me
 	}
 
 	var priceUsers []*storage.User
-	for _, user := range users {
-		island, err := user.GetAnimalCrossingIsland(ctx)
+	for _, u := range users {
+		island, err := u.GetAnimalCrossingIsland(ctx)
 		if err != nil || island == nil {
 			continue
 		}
 		if time.Since(island.LastPrice.Date) > 12*time.Hour {
 			continue
 		}
-		chatmember, err := tgbot.GetChatMember(tgbotapi.ChatConfigWithUser{ChatID: message.Chat.ID, UserID: user.ID})
+		chatmember, err := tgbot.GetChatMember(tgbotapi.ChatConfigWithUser{ChatID: message.Chat.ID, UserID: u.ID})
 		if err != nil || !(chatmember.IsMember() || chatmember.IsCreator() || chatmember.IsAdministrator()) {
 			continue
 		}
 		if !strings.HasSuffix(island.Name, "岛") {
 			island.Name += "岛"
 		}
-		user.Island = *island
-		priceUsers = append(priceUsers, user)
+		u.Island = *island
+		priceUsers = append(priceUsers, u)
 	}
 
-	var top10Price []*storage.User
+	if len(priceUsers) == 0 {
+		return &tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              message.Chat.ID,
+					ReplyToMessageID:    message.MessageID,
+					DisableNotification: true},
+				Text: "本群最近12小时内没有有效的报价"},
+			nil
+	}
 	sort.Slice(priceUsers, func(i, j int) bool {
 		return priceUsers[i].Island.LastPrice.Price > priceUsers[j].Island.LastPrice.Price
 	})
-	top10Price = priceUsers[:10]
+
+	var top10Price []*storage.User
+	if len(priceUsers) > 10 {
+		top10Price = priceUsers[:10]
+	} else {
+		top10Price = priceUsers
+	}
 
 	var dtcPrices []string
 	for _, u := range top10Price {
-		dtcPrices = append(dtcPrices, fmt.Sprintf("%s的岛：%s 上的菜价：%d", u.Name, u.Island.Name, u.Island.LastPrice.Price))
+		if u != nil {
+			dtcPrices = append(dtcPrices, fmt.Sprintf("%s的岛：%s 上的菜价：%d", u.Name, u.Island.Name, u.Island.LastPrice.Price))
+		}
 	}
 
 	return &tgbotapi.MessageConfig{
