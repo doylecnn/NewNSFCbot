@@ -115,37 +115,41 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 
 // MessageHandler process message
 func (c ChatBot) MessageHandler(updates chan tgbotapi.Update) {
-	for update := range updates {
-		inlineQuery := update.InlineQuery
-		message := update.Message
-		if inlineQuery != nil && inlineQuery.Query == "myfc" {
-			if result, err := inlineQueryMyFC(inlineQuery); err != nil {
-				log.Warn(err)
-			} else {
-				c.TgBotClient.AnswerInlineQuery(*result)
-			}
-		} else if message != nil {
-			if (message.Chat.IsGroup() || message.Chat.IsSuperGroup() || message.Chat.IsPrivate()) && message.IsCommand() {
-				messageSendTime := time.Unix(int64(message.Date), 0)
-				if time.Since(messageSendTime).Seconds() > 30 {
-					return
-				}
-				replyMessage, err := c.Route.Run(message)
-				if err != nil {
-					log.Warnf("%s", err.InnerError)
-					if len(err.ReplyText) > 0 {
-						replyMessage = &tgbotapi.MessageConfig{
-							BaseChat: tgbotapi.BaseChat{
-								ChatID:           message.Chat.ID,
-								ReplyToMessageID: message.MessageID},
-							Text: err.ReplyText}
+	for i := 0; i < 2; i++ {
+		go func() {
+			for update := range updates {
+				inlineQuery := update.InlineQuery
+				message := update.Message
+				if inlineQuery != nil && inlineQuery.Query == "myfc" {
+					if result, err := inlineQueryMyFC(inlineQuery); err != nil {
+						log.Warn(err)
+					} else {
+						c.TgBotClient.AnswerInlineQuery(*result)
+					}
+				} else if message != nil {
+					if (message.Chat.IsGroup() || message.Chat.IsSuperGroup() || message.Chat.IsPrivate()) && message.IsCommand() {
+						messageSendTime := time.Unix(int64(message.Date), 0)
+						if time.Since(messageSendTime).Seconds() > 30 {
+							return
+						}
+						replyMessage, err := c.Route.Run(message)
+						if err != nil {
+							log.Warnf("%s", err.InnerError)
+							if len(err.ReplyText) > 0 {
+								replyMessage = &tgbotapi.MessageConfig{
+									BaseChat: tgbotapi.BaseChat{
+										ChatID:           message.Chat.ID,
+										ReplyToMessageID: message.MessageID},
+									Text: err.ReplyText}
+							}
+						}
+						if replyMessage != nil {
+							c.TgBotClient.Send(*replyMessage)
+						}
 					}
 				}
-				if replyMessage != nil {
-					c.TgBotClient.Send(*replyMessage)
-				}
 			}
-		}
+		}()
 	}
 }
 
