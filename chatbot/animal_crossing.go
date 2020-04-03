@@ -266,9 +266,9 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 	}
 
 	price, err := strconv.ParseInt(pricestr, 10, 64)
-	if err != nil || price < 1 {
+	if err != nil || price < 1 || price > 999 {
 		return nil, Error{InnerError: err,
-			ReplyText: "报价只能是正整数狸",
+			ReplyText: "只接受[1-999]之间的正整数报价狸",
 		}
 	}
 
