@@ -63,26 +63,8 @@ func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		groupID = message.Chat.ID
 	}
 	if groupID != 0 {
-		u, lerr := storage.GetUser(ctx, message.From.ID, 0)
-		if lerr != nil {
-			logrus.Error(lerr)
-		} else {
-			if len(u.GroupIDs) > 0 {
-				var exists bool = false
-				for _, id := range u.GroupIDs {
-					if id == groupID {
-						exists = true
-						break
-					}
-				}
-				if !exists {
-					u.GroupIDs = append(u.GroupIDs, groupID)
-					u.Update(ctx)
-				}
-			} else {
-				u.GroupIDs = []int64{groupID}
-				u.Update(ctx)
-			}
+		if lerr := storage.AddGroupIDToUserGroupIDs(ctx, message.From.ID, groupID); lerr != nil {
+			logrus.WithError(err).Error("add groupid to user's groupids failed")
 		}
 		g, err := storage.GetGroup(ctx, groupID)
 		if err != nil && !strings.HasPrefix(err.Error(), "Not found group:") {

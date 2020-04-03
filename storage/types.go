@@ -184,28 +184,63 @@ func GetUsersByNSAccountName(ctx context.Context, username string, groupID int64
 	defer client.Close()
 
 	users = []*User{}
-	iter := client.Collection("users").Where("groupids", "array-contains", groupID).Where("ns_accounts", "array-contains", username).Documents(ctx)
+	iter := client.Collection("users").Where("groupids", "array-contains", groupID).Documents(ctx)
 	for {
-		doc, err := iter.Next()
+		userDocSnap, err := iter.Next()
 		if err == iterator.Done {
 			break
 		}
 		if err != nil {
 			return nil, err
 		}
-		if doc.Exists() {
+		if userDocSnap.Exists() {
 			u := &User{}
-			if err = doc.DataTo(u); err != nil {
+			if err = userDocSnap.DataTo(u); err != nil {
 				logrus.Warn(err)
 				return nil, err
 			}
 			if u != nil {
-				users = append(users, u)
+				for _, a := range u.NSAccounts {
+					if a.Name == username {
+						users = append(users, u)
+						break
+					}
+				}
 				break
 			}
 		}
 	}
 	return users, nil
+}
+
+// RemoveGroupIDFromUserGroupIDs remove groupid from user's groupids
+func RemoveGroupIDFromUserGroupIDs(ctx context.Context, userID int, groupID int64) (err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return
+	}
+	defer client.Close()
+
+	co := client.Doc(fmt.Sprintf("users/%d", userID))
+	_, err = co.Update(ctx, []firestore.Update{
+		{Path: "groupids", Value: firestore.ArrayRemove(groupID)},
+	})
+	return
+}
+
+// AddGroupIDToUserGroupIDs add groupid to user's groupids
+func AddGroupIDToUserGroupIDs(ctx context.Context, userID int, groupID int64) (err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return
+	}
+	defer client.Close()
+
+	co := client.Doc(fmt.Sprintf("users/%d", userID))
+	_, err = co.Update(ctx, []firestore.Update{
+		{Path: "groupids", Value: firestore.ArrayUnion(groupID)},
+	})
+	return
 }
 
 // AddAnimalCrossingIsland add island name
@@ -257,8 +292,7 @@ func (u *User) GetAnimalCrossingIsland(ctx context.Context) (island *Island, err
 		return nil, err
 	}
 	if !dsnap.Exists() || (err != nil && status.Code(err) == codes.NotFound) {
-		//logrus.Debugf("not found island of userID: %d", u.ID)
-		return nil, nil
+		return nil, fmt.Errorf("Not found island of userID: %d", u.ID)
 	}
 	island = &Island{}
 	err = dsnap.DataTo(island)
@@ -347,48 +381,33 @@ func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupI
 			break
 		}
 		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				logrus.Debug("not found user in group")
+			}
 			return nil, err
 		}
-		iter2 := doc.Ref.Collection("games").DocumentRefs(ctx)
-		for {
-			docRef2, err := iter2.Next()
-			if err == iterator.Done {
-				break
+		if !doc.Exists() {
+			continue
+		}
+		if islandDoc, err := doc.Ref.Collection("games").Doc("animal_crossing").Get(ctx); err == nil && islandDoc.Exists() {
+			var island Island
+			islandDoc.DataTo(&island)
+			if strings.HasSuffix(name, "岛") {
+				r := []rune(name)
+				l := len(r)
+				if l > 1 {
+					name = string(r[:l-1])
+				}
 			}
-			if err != nil {
-				return nil, err
-			}
-			if docRef2.ID == "animal_crossing" {
-				doc, err := docRef2.Get(ctx)
-				if err != nil {
+			if island.Name == name || island.Name == name+"岛" {
+				u := &User{}
+				if err = doc.DataTo(u); err != nil {
+					logrus.WithError(err).Error("error when DataTo user")
 					return nil, err
 				}
-				if doc.Exists() {
-					var island Island
-					doc.DataTo(&island)
-					if strings.HasSuffix(name, "岛") {
-						r := []rune(name)
-						l := len(r)
-						if l > 1 {
-							name = string(r[:l-1])
-						}
-					}
-					if island.Name == name || island.Name == name+"岛" {
-						if err != nil {
-							return nil, err
-						}
-						if doc.Exists() {
-							u := &User{}
-							if err = doc.DataTo(u); err != nil {
-								logrus.Warn(err)
-								return nil, err
-							}
-							if u != nil {
-								users = append(users, u)
-								break
-							}
-						}
-					}
+				if u != nil {
+					users = append(users, u)
+					break
 				}
 			}
 		}
@@ -411,41 +430,26 @@ func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string, g
 			break
 		}
 		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				logrus.Debug("not found user in group")
+			}
 			return nil, err
 		}
-		iter2 := doc.Ref.Collection("games").DocumentRefs(ctx)
-		for {
-			docRef2, err := iter2.Next()
-			if err == iterator.Done {
-				break
-			}
-			if err != nil {
-				return nil, err
-			}
-			if docRef2.ID == "animal_crossing" {
-				doc, err := docRef2.Get(ctx)
-				if err != nil {
+		if !doc.Exists() {
+			continue
+		}
+		if islandDoc, err := doc.Ref.Collection("games").Doc("animal_crossing").Get(ctx); err == nil && islandDoc.Exists() {
+			var island Island
+			islandDoc.DataTo(&island)
+			if island.Owner == name {
+				u := &User{}
+				if err = doc.DataTo(u); err != nil {
+					logrus.WithError(err).Error("error when DataTo user")
 					return nil, err
 				}
-				if doc.Exists() {
-					var island Island
-					doc.DataTo(&island)
-					if island.Owner == name {
-						if err != nil {
-							return nil, err
-						}
-						if doc.Exists() {
-							u := &User{}
-							if err = doc.DataTo(u); err != nil {
-								logrus.Warn(err)
-								return nil, err
-							}
-							if u != nil {
-								users = append(users, u)
-								break
-							}
-						}
-					}
+				if u != nil {
+					users = append(users, u)
+					break
 				}
 			}
 		}

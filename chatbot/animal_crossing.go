@@ -11,6 +11,8 @@ import (
 
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
@@ -378,7 +380,7 @@ func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	var groupID int64 = message.Chat.ID
 	ctx := context.Background()
 	users, err := storage.GetUsersByName(ctx, query, groupID)
-	if err != nil {
+	if err != nil && status.Code(err) != codes.NotFound {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询时出错狸",
 		}
@@ -395,7 +397,7 @@ func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	}
 
 	users, err = storage.GetUsersByNSAccountName(ctx, query, groupID)
-	if err != nil {
+	if err != nil && status.Code(err) != codes.NotFound {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询时出错狸",
 		}
@@ -412,7 +414,7 @@ func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	}
 
 	users, err = storage.GetUsersByAnimalCrossingIslandName(ctx, query, groupID)
-	if err != nil {
+	if err != nil && status.Code(err) != codes.NotFound {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询时出错狸",
 		}
@@ -429,7 +431,7 @@ func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	}
 
 	users, err = storage.GetUsersByAnimalCrossingIslandOwnerName(ctx, query, groupID)
-	if err != nil {
+	if err != nil && status.Code(err) != codes.NotFound {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询时出错狸",
 		}

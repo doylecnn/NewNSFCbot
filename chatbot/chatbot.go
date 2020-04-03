@@ -212,22 +212,8 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				}
 				var groupID int64 = message.Chat.ID
 				ctx := context.Background()
-				u, lerr := storage.GetUser(ctx, message.From.ID, groupID)
-				if lerr != nil {
-					logrus.Error(lerr)
-				} else {
-					if len(u.GroupIDs) > 0 {
-						for i, id := range u.GroupIDs {
-							if id == groupID {
-								// Remove the element at index i from a.
-								u.GroupIDs[i] = u.GroupIDs[len(u.GroupIDs)-1] // Copy last element to index i.
-								u.GroupIDs[len(u.GroupIDs)-1] = 0             // Erase last element (write zero value).
-								u.GroupIDs = u.GroupIDs[:len(u.GroupIDs)-1]   // Truncate slice.
-								u.Update(ctx)
-								break
-							}
-						}
-					}
+				if err := storage.RemoveGroupIDFromUserGroupIDs(ctx, message.From.ID, groupID); err != nil {
+					logrus.WithError(err).Error("remove groupid from user's groupids failed")
 				}
 			} else if message != nil && message.NewChatMembers != nil && len(*message.NewChatMembers) > 0 {
 				if message.Chat.IsPrivate() {
@@ -240,7 +226,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 					if strings.HasPrefix(err.Error(), "Not found group:") {
 						g.Create(ctx)
 					} else {
-						logrus.Error(err)
+						logrus.WithError(err).Error("get group failed")
 					}
 				} else {
 					if og.Title != g.Title || og.Type != g.Type {
@@ -254,14 +240,17 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 						"gid":   message.Chat.ID,
 						"group": message.Chat.Title,
 					}).Info("user joined group")
-					u, lerr := storage.GetUser(ctx, u.ID, g.ID)
-					if lerr != nil {
-						logrus.Error(lerr)
+					u, err := storage.GetUser(ctx, u.ID, g.ID)
+					if err != nil {
+						logrus.WithError(err).Error("get user failed")
 					} else {
 						if len(u.GroupIDs) > 0 {
 							u.GroupIDs = append(u.GroupIDs, g.ID)
 						} else {
 							u.GroupIDs = []int64{g.ID}
+						}
+						if err = storage.AddGroupIDToUserGroupIDs(ctx, u.ID, g.ID); err != nil {
+							logrus.WithError(err).Error("add groupid to user's groupids faild")
 						}
 					}
 				}
