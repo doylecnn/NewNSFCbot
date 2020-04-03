@@ -10,9 +10,8 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 )
 
 //TelegramAuth 使用telegram 来登录
@@ -58,11 +57,12 @@ func TelegramAuth(secretKey [32]byte) gin.HandlerFunc {
 func redirectToLogin(c *gin.Context, errorMessage string) {
 	DelCookie(c, "auth_data_str")
 	DelCookie(c, "auth_data_hash")
-	log.Printf("errormessage:%s", errorMessage)
+	logrus.Printf("errormessage:%s", errorMessage)
 	c.Redirect(http.StatusTemporaryRedirect, "/login?error=LoginFailed")
 	c.Abort()
 }
 
+// GetAuthDataInfo get user auth data info
 func GetAuthDataInfo(authData, key string) (value string, err error) {
 	err = fmt.Errorf("key: %s not found", key)
 	s := key + "="
@@ -85,6 +85,7 @@ func GetAuthDataInfo(authData, key string) (value string, err error) {
 	return
 }
 
+// DelCookie delete cookie
 func DelCookie(c *gin.Context, name string) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     name,

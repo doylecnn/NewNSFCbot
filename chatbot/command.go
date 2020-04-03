@@ -1,11 +1,16 @@
 package chatbot
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 
+	fuzzy "github.com/doylecnn/go-fuzzywuzzy"
+	"github.com/doylecnn/new-nsfc-bot/storage"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -25,41 +30,120 @@ func (e Error) Error() string {
 
 // Command interface
 type Command interface {
-	Do(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error)
+	Do(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error)
 }
 
 // Router is command router
 type Router struct {
-	commands map[string]func(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error)
+	commands       map[string]func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error)
+	commandSuggest func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error)
 }
 
 // NewRouter returns new Router
 func NewRouter() Router {
 	r := Router{}
-	r.commands = make(map[string]func(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error))
+	r.commands = make(map[string]func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error))
+	r.commandSuggest = cmdSuggest
 	return r
 }
 
 // HandleFunc regist HandleFunc
-func (r Router) HandleFunc(cmd string, f func(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error)) {
+func (r Router) HandleFunc(cmd string, f func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error)) {
 	if _, ok := r.commands[cmd]; ok {
-		log.Fatalln(errors.New("already exists handle func"))
+		logrus.Fatalln(errors.New("already exists handle func"))
 	}
 	r.commands[cmd] = f
 }
 
 // Run the command
-func (r Router) Run(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err *Error) {
+func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err *Error) {
+	ctx := context.Background()
+	var groupID int64 = 0
+	if !message.Chat.IsPrivate() {
+		groupID = message.Chat.ID
+	}
+	if groupID != 0 {
+		u, lerr := storage.GetUser(ctx, message.From.ID, 0)
+		if lerr != nil {
+			logrus.Error(lerr)
+		} else {
+			if len(u.GroupIDs) > 0 {
+				var exists bool = false
+				for _, id := range u.GroupIDs {
+					if id == groupID {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					u.GroupIDs = append(u.GroupIDs, groupID)
+					u.Update(ctx)
+				}
+			} else {
+				u.GroupIDs = []int64{groupID}
+				u.Update(ctx)
+			}
+		}
+		g, err := storage.GetGroup(ctx, groupID)
+		if err != nil && !strings.HasPrefix(err.Error(), "Not found group:") {
+			logrus.Errorf("GetGroupError:%v", err)
+		} else if err != nil && strings.HasPrefix(err.Error(), "Not found group:") {
+			g = storage.Group{ID: message.Chat.ID, Type: message.Chat.Type, Title: message.Chat.Title}
+			g.Create(ctx)
+		} else {
+			g.Type = message.Chat.Type
+			g.Title = message.Chat.Title
+			g.Update(ctx)
+		}
+	}
 	cmd := message.Command()
 	if c, ok := r.commands[cmd]; ok {
-		reply, e := c(message)
+		replies, e := c(message)
 		if e != nil {
 			if e, ok := e.(Error); ok {
 				return nil, &Error{InnerError: fmt.Errorf("error occurred when running cmd: %s\n error is: %s", cmd, e.InnerError), ReplyText: e.ReplyText}
 			}
 			return nil, &Error{InnerError: fmt.Errorf("error occurred when running cmd: %s\n error is: %s", cmd, e)}
 		}
-		return reply, nil
+		return replies, nil
+	} else if r.commandSuggest != nil {
+		replies, e := r.commandSuggest(message)
+		if e != nil {
+			if e, ok := e.(Error); ok {
+				return nil, &Error{InnerError: fmt.Errorf("error occurred when running cmd: /suggest\n error is: %s", e.InnerError), ReplyText: e.ReplyText}
+			}
+			return nil, &Error{InnerError: fmt.Errorf("error occurred when running cmd: /suggest\n error is: %s", e)}
+		}
+		return replies, nil
 	}
-	return nil, &Error{InnerError: fmt.Errorf("no HandleFunc for %s", cmd)}
+	return nil, &Error{InnerError: fmt.Errorf("no HandleFunc for command /%s", cmd)}
+}
+
+func cmdSuggest(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	cmd := message.Command()
+	cmds, err := getMyCommands()
+	if err != nil {
+		logrus.WithError(err).Warn("get my commands failed.")
+	}
+	var fuzzyScores []int
+	var scoreCmdIdx map[int]int = make(map[int]int)
+	for i, c := range cmds {
+		score := fuzzy.Ratio(cmd, c.Command)
+		fuzzyScores = append(fuzzyScores, score)
+		scoreCmdIdx[score] = i
+	}
+	sort.Slice(fuzzyScores, func(i, j int) bool {
+		return fuzzyScores[i] > fuzzyScores[j]
+	})
+	mostSuggestCommand := cmds[scoreCmdIdx[fuzzyScores[0]]]
+
+	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: true},
+			Text: fmt.Sprintf("没有找到你输入的指令狸。猜测你想执行的是：\n/%s %s",
+				mostSuggestCommand.Command,
+				mostSuggestCommand.Description)}},
+		nil
 }

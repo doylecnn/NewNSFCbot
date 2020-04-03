@@ -11,10 +11,9 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/gin-gonic/gin"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
+	"github.com/sirupsen/logrus"
 )
 
 //Auth is auth page used telegram auth callback
@@ -43,12 +42,12 @@ func Auth(c *gin.Context) {
 				setCookie(c, "auth_data_hash", hash)
 				userid, err := strconv.ParseInt(c.Query("id"), 10, 64)
 				if err != nil {
-					log.Printf("can not convert %s to int. err* %v", c.Query("id"), err)
+					logrus.Printf("can not convert %s to int. err* %v", c.Query("id"), err)
 				}
 				msg := tgbotapi.NewMessage(userid, fmt.Sprintf("hello https://t.me/%d, welcome to NS_FC_bot.", userid))
 				_, err = TgBotClient.Send(msg)
 				if err != nil {
-					log.Printf("send message to user telegram failed. err: %v", err)
+					logrus.Printf("send message to user telegram failed. err: %v", err)
 				}
 				c.Redirect(http.StatusTemporaryRedirect, "/user/"+c.Query("id"))
 				return

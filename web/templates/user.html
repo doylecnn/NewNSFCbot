@@ -11,7 +11,7 @@
     <div>username {{.name}}</div>
     {{if .NSAccounts}}
     <ul>
-        {{range .NSAccounts}}
+        {{range .user.NSAccounts}}
         <li><span><label for="nsaccountname">Nintendo Account: </label><input name="nsaccountname" type="text" value="{{.Name}}"/></span><span><label for="nsfriendcode">Friend Code: </label><input name="nsfriendcode" type="text" value="{{.FC}}"/></span></li>
         {{end}}
     </ul>

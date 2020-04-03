@@ -5,6 +5,7 @@ go 1.14
 require (
 	cloud.google.com/go v0.55.0 // indirect
 	cloud.google.com/go/firestore v1.1.1
+	github.com/doylecnn/go-fuzzywuzzy v0.0.0-20200304095451-d95270404228
 	github.com/gin-gonic/gin v1.5.0
 	github.com/go-telegram-bot-api/telegram-bot-api v4.6.4+incompatible
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect

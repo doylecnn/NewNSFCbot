@@ -21,6 +21,8 @@ var (
 	FirestoreClientContext context.Context
 	//Domain is domain
 	Domain string
+	//AdminID is admin telegram id
+	AdminID int
 )
 
 func setCookie(c *gin.Context, name, value string) {

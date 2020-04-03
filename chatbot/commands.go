@@ -7,12 +7,12 @@ import (
 	"strings"
 
 	"github.com/doylecnn/new-nsfc-bot/storage"
+	"github.com/sirupsen/logrus"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-	log "github.com/sirupsen/logrus"
 )
 
-func cmdAddFC(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error) {
+func cmdAddFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	args := strings.TrimSpace(message.CommandArguments())
 	if len(args) <= 1 {
 		return
@@ -28,14 +28,18 @@ func cmdAddFC(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, 
 		}
 	}
 
+	var groupID int64 = 0
+	if !message.Chat.IsPrivate() {
+		groupID = message.Chat.ID
+	}
 	ctx := context.Background()
-	u, err := storage.GetUser(ctx, message.From.ID)
-	if err != nil {
+	u, err := storage.GetUser(ctx, message.From.ID, groupID)
+	if err != nil && !strings.HasPrefix(err.Error(), "Not found userID:") {
 		return nil, Error{InnerError: err,
 			ReplyText: fmt.Sprintf("创建用户信息时出错: %v", err),
 		}
 	}
-	if u == nil {
+	if err != nil && strings.HasPrefix(err.Error(), "Not found userID:") {
 		username := message.From.UserName
 		if len(username) == 0 {
 			username = strings.TrimSpace(message.From.FirstName + " " + message.From.LastName)
@@ -43,96 +47,113 @@ func cmdAddFC(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, 
 		if len(username) == 0 {
 			username = fmt.Sprintf("%d", message.From.ID)
 		}
-		u = &storage.User{ID: message.From.ID, Name: username, NSAccounts: accounts}
+		if !message.Chat.IsPrivate() {
+			u = &storage.User{ID: message.From.ID, Name: username, NSAccounts: accounts, GroupIDs: []int64{groupID}}
+		} else {
+			u = &storage.User{ID: message.From.ID, Name: username, NSAccounts: accounts}
+		}
 		if err = u.Create(ctx); err != nil {
 			return nil, Error{InnerError: err,
 				ReplyText: fmt.Sprintf("创建用户信息时出错: %v", err),
 			}
 		}
 	} else {
-		if err = u.AddNSAccounts(ctx, accounts); err != nil {
-			return nil, Error{InnerError: err,
-				ReplyText: fmt.Sprintf("插入 Friend Code 时出错: %v", err),
+		var accountNotExists []storage.NSAccount
+		var accountNeedUpdate bool = false
+		for _, a := range accounts {
+			for i, account := range u.NSAccounts {
+				if account.FC == a.FC {
+					if account.Name != a.Name {
+						accountNeedUpdate = true
+						u.NSAccounts[i].Name = a.Name
+					}
+					break
+				}
+			}
+			accountNeedUpdate = true
+			accountNotExists = append(accountNotExists, a)
+		}
+		if accountNeedUpdate {
+			if len(accountNotExists) > 0 {
+				u.NSAccounts = append(u.NSAccounts, accountNotExists...)
+			}
+			if err = u.Update(ctx); err != nil {
+				return nil, Error{InnerError: err,
+					ReplyText: fmt.Sprintf("更新用户信息时出错: %v", err),
+				}
 			}
 		}
 	}
 
-	return &tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
-			Text: fmt.Sprintf("完成。添加/更新了 %d 个 Friend Code", len(accounts))},
+			Text: fmt.Sprintf("完成。添加/更新了 %d 个 Friend Code", len(accounts))}},
 		nil
 }
 
-func cmdMyFC(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error) {
+func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	ctx := context.Background()
-	u, err := storage.GetUser(ctx, message.From.ID)
-	if err != nil {
+	u, err := storage.GetUser(ctx, message.From.ID, 0)
+	if err != nil && !strings.HasPrefix(err.Error(), "Not found userID:") {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询记录时出错了",
 		}
 	}
-	if u == nil {
-		log.Debug("没有找到用户记录")
-		return &tgbotapi.MessageConfig{
+	if err != nil && strings.HasPrefix(err.Error(), "Not found userID:") {
+		logrus.Debug("没有找到用户记录")
+		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
 					DisableNotification: true},
-				Text: "没有找到您的记录，请先使用 addfc 命令添加记录"},
-			nil
-	}
-	log.Debugf("user:%s", u.Name)
-	accounts, err := u.GetAccounts(ctx)
-	if err != nil {
-		return nil, Error{InnerError: err,
-			ReplyText: "查询记录时出错了",
-		}
-	}
-	if len(accounts) == 0 {
-		log.Debug("account count: 0")
-		return &tgbotapi.MessageConfig{
-				BaseChat: tgbotapi.BaseChat{
-					ChatID:              message.Chat.ID,
-					ReplyToMessageID:    message.MessageID,
-					DisableNotification: true},
-				Text: "没有找到您的记录，请先使用 addfc 命令添加记录"},
+				Text: "没有找到您的记录，请先使用 addfc 命令添加记录"}},
 			nil
 	}
 	var astr []string
-	for _, account := range accounts {
+	for _, account := range u.NSAccounts {
 		astr = append(astr, account.String())
 	}
-	return &tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
-			Text: strings.Join(astr, "\n")},
+			Text: strings.Join(astr, "\n")}},
 		nil
 }
 
-func cmdSearchFC(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error) {
+func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	if message.Chat.IsPrivate() {
+		return
+	}
 	args := strings.TrimSpace(message.CommandArguments())
 	ctx := context.Background()
 	var us []*storage.User
 	if message.ReplyToMessage != nil && message.ReplyToMessage.From.ID != message.From.ID {
-		u, err := storage.GetUser(ctx, message.ReplyToMessage.From.ID)
+		var groupID int64 = message.Chat.ID
+		u, err := storage.GetUser(ctx, message.ReplyToMessage.From.ID, groupID)
 		if err != nil {
+			if strings.HasPrefix(err.Error(), "Not found userID:") {
+				return nil, Error{InnerError: err,
+					ReplyText: "没有找岛（到）这位用户的信息狸",
+				}
+			}
 			return nil, Error{InnerError: err,
-				ReplyText: "查询记录时出错了",
+				ReplyText: "查询记录时出错狸",
 			}
 		}
 		if u != nil {
 			us = []*storage.User{u}
 		}
 	} else if len(args) > 1 && strings.HasPrefix(args, "@") && args[1:] != message.From.UserName {
-		us, err = storage.GetUsersByName(ctx, args[1:])
+		var groupID int64 = message.Chat.ID
+		us, err = storage.GetUsersByName(ctx, args[1:], groupID)
 		if err != nil {
 			return nil, Error{InnerError: err,
-				ReplyText: "查询记录时出错了",
+				ReplyText: "查询记录时出错狸",
 			}
 		}
 	} else {
@@ -140,88 +161,40 @@ func cmdSearchFC(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfi
 	}
 
 	if len(us) == 0 {
-		log.Info("users count == 0")
-		return &tgbotapi.MessageConfig{
+		logrus.Info("users count == 0")
+		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
 					DisableNotification: true},
-				Text: "没有找到对方的记录"},
+				Text: "没有找岛（到）对方的记录狸"}},
 			nil
 	}
-
-	var user *storage.User
-	for _, u := range us {
-		chatmember, err := tgbot.GetChatMember(tgbotapi.ChatConfigWithUser{ChatID: message.Chat.ID, UserID: u.ID})
-		if err != nil {
-			return nil, Error{InnerError: err,
-				ReplyText: "查询记录时出错了",
-			}
-		}
-		if chatmember.IsMember() || chatmember.IsCreator() || chatmember.IsAdministrator() {
-			user = u
-			break
-		}
-	}
-
-	if user == nil {
-		return &tgbotapi.MessageConfig{
-				BaseChat: tgbotapi.BaseChat{
-					ChatID:              message.Chat.ID,
-					ReplyToMessageID:    message.MessageID,
-					DisableNotification: true},
-				Text: "没有找到对方的记录"},
-			nil
-	}
-
-	accounts, err := user.GetAccounts(ctx)
-	if err != nil {
-		return nil, Error{InnerError: err,
-			ReplyText: "查询记录时出错了",
-		}
-	}
-	if len(accounts) == 0 {
-		return &tgbotapi.MessageConfig{
-				BaseChat: tgbotapi.BaseChat{
-					ChatID:              message.Chat.ID,
-					ReplyToMessageID:    message.MessageID,
-					DisableNotification: true},
-				Text: "对方尚未登记过自己的 Friend Code"},
-			nil
-	}
-
+	u := us[0]
 	var astr []string
-	for _, account := range accounts {
+	for _, account := range u.NSAccounts {
 		astr = append(astr, account.String())
 	}
-	return &tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
-			Text: strings.Join(astr, "\n")},
+			Text: strings.Join(astr, "\n")}},
 		nil
 }
 
 func inlineQueryMyFC(query *tgbotapi.InlineQuery) (*tgbotapi.InlineConfig, error) {
 	ctx := context.Background()
-	u, err := storage.GetUser(ctx, query.From.ID)
-	if err != nil {
+	u, err := storage.GetUser(ctx, query.From.ID, 0)
+	if err != nil && !strings.HasPrefix(err.Error(), "Not found userID:") {
 		return nil, err
 	}
-	if u == nil {
+	if err != nil && strings.HasPrefix(err.Error(), "Not found userID:") {
 		return nil, errors.New("user not found")
 	}
-	log.Debugf("user:%s", u.Name)
-	accounts, err := u.GetAccounts(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if len(accounts) == 0 {
-		return nil, errors.New("account not found")
-	}
 	var astr []string
-	for _, account := range accounts {
+	for _, account := range u.NSAccounts {
 		astr = append(astr, account.String())
 	}
 
@@ -232,48 +205,68 @@ func inlineQueryMyFC(query *tgbotapi.InlineQuery) (*tgbotapi.InlineConfig, error
 	}, nil
 }
 
-func cmdWebLogin(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error) {
-	return &tgbotapi.MessageConfig{
+func cmdWebLogin(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
-			Text: fmt.Sprintf("https://%s.appspot.com/login", _projectID)},
+			Text: fmt.Sprintf("https://%s.appspot.com/login", _projectID)}},
 		nil
 }
 
-func cmdListFriendCodes(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error) {
+func cmdListFriendCodes(message *tgbotapi.Message) (replyMessages []*tgbotapi.MessageConfig, err error) {
+	if message.Chat.IsPrivate() {
+		return
+	}
 	ctx := context.Background()
-	users, err := storage.GetAllUsers(ctx)
+	users, err := storage.GetGroupUsers(ctx, message.Chat.ID)
 	if err != nil {
 		err = Error{InnerError: err,
-			ReplyText: "查询时出错",
+			ReplyText: "查询时出错狸",
 		}
 		return
 	}
 	var rst []string
+	var i = 0
 	for _, u := range users {
-		var chatmember tgbotapi.ChatMember
-		chatmember, err = tgbot.GetChatMember(tgbotapi.ChatConfigWithUser{ChatID: message.Chat.ID, UserID: u.ID})
-		if err != nil || !(chatmember.IsMember() || chatmember.IsCreator() || chatmember.IsAdministrator()) {
+		if len(u.NSAccounts) == 0 {
 			continue
 		}
-		accounts, err := u.GetAccounts(ctx)
-		if err != nil {
-			continue
+		if len(u.NSAccounts) == 1 {
+			a := u.NSAccounts[0]
+			if len(a.Name) == 0 {
+				rst = append(rst, u.Name+a.String())
+			} else {
+				rst = append(rst, a.String())
+			}
+		} else {
+			userinfo := fmt.Sprintf("%s:", u.Name)
+			for _, a := range u.NSAccounts {
+				userinfo += fmt.Sprintf("\n +- %s", a.String())
+			}
+			rst = append(rst, userinfo)
 		}
-		userinfo := u.Name
-		for _, a := range accounts {
-			userinfo += fmt.Sprintf("\n\t%s", a.String())
+		i++
+		if i != 0 && i%50 == 0 {
+			replyMessages = append(replyMessages, &tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              message.Chat.ID,
+					ReplyToMessageID:    message.MessageID,
+					DisableNotification: true},
+				Text: strings.Join(rst, "\n")})
+			rst = rst[:0]
 		}
-		rst = append(rst, userinfo)
 	}
-
-	return &tgbotapi.MessageConfig{
+	if len(rst) > 0 {
+		replyMessages = append(replyMessages, &tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
-			Text: strings.Join(rst, "\n")},
-		nil
+			Text: strings.Join(rst, "\n")})
+		rst = rst[:0]
+	}
+
+	return replyMessages, nil
 }

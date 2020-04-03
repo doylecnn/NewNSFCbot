@@ -1,13 +1,17 @@
 package chatbot
 
 import (
+	"bufio"
+	"context"
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/doylecnn/new-nsfc-bot/storage"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -27,19 +31,12 @@ type ChatBot struct {
 func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
-		log.Fatalln(err)
+		logrus.Fatalln(err)
 	}
-	bot.Debug = true
+	//bot.Debug = true
 	tgbot = bot
 
-	router := NewRouter()
-	router.HandleFunc("help", func(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error) {
-		return &tgbotapi.MessageConfig{
-				BaseChat: tgbotapi.BaseChat{
-					ChatID:              message.Chat.ID,
-					ReplyToMessageID:    message.MessageID,
-					DisableNotification: true},
-				Text: `/addfc 添加你的fc，可批量添加：/addfc id1:fc1;id2:fc2……
+	var botHelpText = `/addfc 添加你的fc，可批量添加：/addfc id1:fc1;id2:fc2……
 /myfc 显示自己的所有fc
 /sfc 搜索你回复或at 的人的fc
 /fc 与sfc 相同
@@ -52,11 +49,35 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 /close_island 关闭自己的岛 相同指令 /close_airport
 /dtcj 更新大头菜价格, 不带参数时，和 /gj 相同
 /gj 大头菜最新价格，只显示同群中价格从高到低前10
+/ghs 搞化石交换用的登记spreadsheet链接
 /islands 提供网页展示本bot 记录的所有动森岛屿信息
 /login 登录到本bot 的web 界面，更方便查看信息
-/help 查看本帮助信息`},
+/help 查看本帮助信息`
+	var botCommands []BotCommand
+	scanner := bufio.NewScanner(strings.NewReader(botHelpText))
+	scanner.Split(bufio.ScanLines)
+	for scanner.Scan() {
+		sep := strings.SplitN(scanner.Text(), " ", 2)
+		botCommands = append(botCommands,
+			BotCommand{Command: strings.TrimSpace(sep[0]),
+				Description: strings.TrimSpace(sep[1]),
+			})
+	}
+
+	router := NewRouter()
+	router.HandleFunc("help", func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              message.Chat.ID,
+					ReplyToMessageID:    message.MessageID,
+					DisableNotification: true},
+				Text: botHelpText}},
 			nil
 	})
+
+	if _, err = setMyCommands(botCommands); err != nil {
+		logrus.Warn(err)
+	}
 	router.HandleFunc("addfc", cmdAddFC)
 	router.HandleFunc("myfc", cmdMyFC)
 	router.HandleFunc("sfc", cmdSearchFC)
@@ -74,6 +95,7 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 	router.HandleFunc("dtcj", cmdDTCPriceUpdate)
 	router.HandleFunc("gj", cmdDTCMaxPriceInGroup)
 	router.HandleFunc("sac", cmdSearchAnimalCrossingInfo)
+	router.HandleFunc("ghs", cmdHuaShiJiaoHuanBiaoGe)
 
 	router.HandleFunc("whois", cmdWhois)
 
@@ -82,8 +104,10 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 
 	// admin
 	router.HandleFunc("importDATA", cmdImportData)
+	router.HandleFunc("updateGroupInfo", cmdUpdateGroupInfo)
+	router.HandleFunc("fclistall", cmdListAllFriendCodes)
 
-	log.WithFields(log.Fields{"bot username": bot.Self.UserName,
+	logrus.WithFields(logrus.Fields{"bot username": bot.Self.UserName,
 		"bot id": bot.Self.ID}).Infof("Authorized on account %s, ID: %d", bot.Self.UserName, bot.Self.ID)
 
 	botAdminID = adminID
@@ -93,10 +117,10 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 
 	info, err := bot.GetWebhookInfo()
 	if err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 	if info.LastErrorDate != 0 {
-		log.WithField("last error message", info.LastErrorMessage).Info("Telegram callback failed")
+		logrus.WithField("last error message", info.LastErrorMessage).Info("Telegram callback failed")
 	}
 	if !info.IsSet() {
 		var webhookConfig WebhookConfig
@@ -106,7 +130,7 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 		webhookConfig.AllowedUpdates = []string{"message", "inline_query"}
 		_, err = c.SetWebhook(webhookConfig)
 		if err != nil {
-			log.Fatal(err)
+			logrus.Fatal(err)
 		}
 	}
 
@@ -116,40 +140,133 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 // MessageHandler process message
 func (c ChatBot) MessageHandler(updates chan tgbotapi.Update) {
 	for i := 0; i < 2; i++ {
-		go func() {
-			for update := range updates {
-				inlineQuery := update.InlineQuery
-				message := update.Message
-				if inlineQuery != nil && inlineQuery.Query == "myfc" {
-					if result, err := inlineQueryMyFC(inlineQuery); err != nil {
-						log.Warn(err)
-					} else {
-						c.TgBotClient.AnswerInlineQuery(*result)
+		go c.messageHandlerWorker(updates)
+	}
+}
+
+func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
+	for update := range updates {
+		inlineQuery := update.InlineQuery
+		message := update.Message
+		if inlineQuery != nil && inlineQuery.Query == "myfc" {
+			if result, err := inlineQueryMyFC(inlineQuery); err != nil {
+				logrus.Warn(err)
+			} else {
+				c.TgBotClient.AnswerInlineQuery(*result)
+			}
+		} else if message != nil {
+			if (message.Chat.IsGroup() || message.Chat.IsSuperGroup() || message.Chat.IsPrivate()) && message.IsCommand() {
+				messageSendTime := time.Unix(int64(message.Date), 0)
+				if time.Since(messageSendTime).Seconds() > 30 {
+					logrus.Infof("old message dropped: %s", message.Text)
+					continue
+				}
+				replyMessages, err := c.Route.Run(message)
+				if err != nil {
+					logrus.Warnf("%s", err.InnerError)
+					if len(err.ReplyText) > 0 {
+						replyMessage := tgbotapi.MessageConfig{
+							BaseChat: tgbotapi.BaseChat{
+								ChatID:           message.Chat.ID,
+								ReplyToMessageID: message.MessageID},
+							Text: err.ReplyText}
+						c.TgBotClient.Send(replyMessage)
+						continue
 					}
-				} else if message != nil {
-					if (message.Chat.IsGroup() || message.Chat.IsSuperGroup() || message.Chat.IsPrivate()) && message.IsCommand() {
-						messageSendTime := time.Unix(int64(message.Date), 0)
-						if time.Since(messageSendTime).Seconds() > 30 {
-							return
-						}
-						replyMessage, err := c.Route.Run(message)
-						if err != nil {
-							log.Warnf("%s", err.InnerError)
-							if len(err.ReplyText) > 0 {
-								replyMessage = &tgbotapi.MessageConfig{
+				}
+				for _, replyMessage := range replyMessages {
+					var text = replyMessage.Text
+					l := len(text)
+					if replyMessage != nil && l > 0 {
+						if l > 4096 {
+							offset := 0
+							for l > 4096 {
+								remain := l - offset
+								if remain > 4096 {
+									remain = 4096
+								}
+								fm := tgbotapi.MessageConfig{
 									BaseChat: tgbotapi.BaseChat{
 										ChatID:           message.Chat.ID,
 										ReplyToMessageID: message.MessageID},
-									Text: err.ReplyText}
+									Text: replyMessage.Text[offset : offset+remain]}
+								c.TgBotClient.Send(fm)
 							}
-						}
-						if replyMessage != nil {
+						} else {
 							c.TgBotClient.Send(*replyMessage)
 						}
 					}
 				}
+			} else if message != nil && message.LeftChatMember != nil {
+				if message.Chat.IsPrivate() {
+					continue
+				}
+				logrus.WithFields(logrus.Fields{
+					"uid":   message.LeftChatMember.ID,
+					"name":  message.LeftChatMember.FirstName + " " + message.LeftChatMember.LastName + "(" + message.LeftChatMember.UserName + ")",
+					"gid":   message.Chat.ID,
+					"group": message.Chat.Title,
+				}).Info("user left group")
+				if message.Chat.IsPrivate() {
+					continue
+				}
+				var groupID int64 = message.Chat.ID
+				ctx := context.Background()
+				u, lerr := storage.GetUser(ctx, message.From.ID, groupID)
+				if lerr != nil {
+					logrus.Error(lerr)
+				} else {
+					if len(u.GroupIDs) > 0 {
+						for i, id := range u.GroupIDs {
+							if id == groupID {
+								// Remove the element at index i from a.
+								u.GroupIDs[i] = u.GroupIDs[len(u.GroupIDs)-1] // Copy last element to index i.
+								u.GroupIDs[len(u.GroupIDs)-1] = 0             // Erase last element (write zero value).
+								u.GroupIDs = u.GroupIDs[:len(u.GroupIDs)-1]   // Truncate slice.
+								u.Update(ctx)
+								break
+							}
+						}
+					}
+				}
+			} else if message != nil && message.NewChatMembers != nil && len(*message.NewChatMembers) > 0 {
+				if message.Chat.IsPrivate() {
+					continue
+				}
+				ctx := context.Background()
+				g := storage.Group{ID: message.Chat.ID, Type: message.Chat.Type, Title: message.Chat.Title}
+				og, err := storage.GetGroup(ctx, g.ID)
+				if err != nil {
+					if strings.HasPrefix(err.Error(), "Not found group:") {
+						g.Create(ctx)
+					} else {
+						logrus.Error(err)
+					}
+				} else {
+					if og.Title != g.Title || og.Type != g.Type {
+						g.Update(ctx)
+					}
+				}
+				for _, u := range *message.NewChatMembers {
+					logrus.WithFields(logrus.Fields{
+						"uid":   u.ID,
+						"name":  u.FirstName + " " + u.LastName + "(" + u.UserName + ")",
+						"gid":   message.Chat.ID,
+						"group": message.Chat.Title,
+					}).Info("user joined group")
+					u, lerr := storage.GetUser(ctx, u.ID, g.ID)
+					if lerr != nil {
+						logrus.Error(lerr)
+					} else {
+						if len(u.GroupIDs) > 0 {
+							u.GroupIDs = append(u.GroupIDs, g.ID)
+						} else {
+							u.GroupIDs = []int64{g.ID}
+						}
+					}
+				}
 			}
-		}()
+		}
 	}
 }
 
