@@ -11,6 +11,7 @@ import (
 
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,6 +19,7 @@ var (
 	tgbot      *tgbotapi.BotAPI
 	botAdminID int
 	_projectID string
+	cache      *lru.Cache
 )
 
 // ChatBot is chat bot
@@ -25,6 +27,8 @@ type ChatBot struct {
 	TgBotClient *tgbotapi.BotAPI
 	Route       Router
 	ProjectID   string
+	appID       string
+	token       string
 }
 
 // NewChatBot return new chat bot
@@ -33,7 +37,7 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 	if err != nil {
 		logrus.Fatalln(err)
 	}
-	//bot.Debug = true
+
 	tgbot = bot
 
 	var botHelpText = `/addfc 添加你的fc，可批量添加：/addfc id1:fc1;id2:fc2……
@@ -106,6 +110,7 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 	router.HandleFunc("importDATA", cmdImportData)
 	router.HandleFunc("updateGroupInfo", cmdUpdateGroupInfo)
 	router.HandleFunc("fclistall", cmdListAllFriendCodes)
+	router.HandleFunc("debug", cmdToggleDebugMode)
 
 	logrus.WithFields(logrus.Fields{"bot username": bot.Self.UserName,
 		"bot id": bot.Self.ID}).Infof("Authorized on account %s, ID: %d", bot.Self.UserName, bot.Self.ID)
@@ -113,28 +118,40 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 	botAdminID = adminID
 	_projectID = projectID
 
-	c := ChatBot{bot, router, projectID}
+	c := ChatBot{TgBotClient: bot, Route: router, ProjectID: projectID, appID: appID, token: token}
 
-	info, err := bot.GetWebhookInfo()
+	if err = c.SetWebhook(); err != nil {
+		logrus.Error(err)
+	}
+	if cache, err = lru.New(17); err != nil {
+		logrus.WithError(err).Error("new lru cache failed")
+	}
+
+	return c
+}
+
+// SetWebhook set webhook
+func (c ChatBot) SetWebhook() (err error) {
+	info, err := c.TgBotClient.GetWebhookInfo()
 	if err != nil {
-		logrus.Fatal(err)
+		return
 	}
 	if info.LastErrorDate != 0 {
 		logrus.WithField("last error message", info.LastErrorMessage).Info("Telegram callback failed")
 	}
 	if !info.IsSet() {
 		var webhookConfig WebhookConfig
-		var wc = tgbotapi.NewWebhook(fmt.Sprintf("https://%s.appspot.com/%s", appID, token))
+		var wc = tgbotapi.NewWebhook(fmt.Sprintf("https://%s.appspot.com/%s", c.appID, c.token))
 		webhookConfig = WebhookConfig{WebhookConfig: wc}
 		webhookConfig.MaxConnections = 10
-		webhookConfig.AllowedUpdates = []string{"message", "inline_query"}
-		_, err = c.SetWebhook(webhookConfig)
+		webhookConfig.AllowedUpdates = []string{"message", "edited_message", "inline_query"}
+		_, err = c.setWebhook(webhookConfig)
 		if err != nil {
-			logrus.Fatal(err)
+			logrus.WithError(err).Error("SetWebhook failed")
+			return
 		}
 	}
-
-	return c
+	return
 }
 
 // MessageHandler process message
@@ -148,20 +165,60 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 	for update := range updates {
 		inlineQuery := update.InlineQuery
 		message := update.Message
+		var isEditedMessage bool = false
+		if message == nil {
+			message = update.EditedMessage
+			if message != nil {
+				isEditedMessage = true
+			}
+		}
 		if inlineQuery != nil && inlineQuery.Query == "myfc" {
 			if result, err := inlineQueryMyFC(inlineQuery); err != nil {
 				logrus.Warn(err)
 			} else {
 				c.TgBotClient.AnswerInlineQuery(*result)
 			}
-		} else if message != nil {
-			if (message.Chat.IsGroup() || message.Chat.IsSuperGroup() || message.Chat.IsPrivate()) && message.IsCommand() {
-				messageSendTime := time.Unix(int64(message.Date), 0)
-				if time.Since(messageSendTime).Seconds() > 30 {
+		} else if message != nil && message.IsCommand() {
+			if message.Chat.IsGroup() || message.Chat.IsSuperGroup() || message.Chat.IsPrivate() {
+				messageSendTime := message.Time()
+				if !isEditedMessage && time.Since(messageSendTime).Seconds() > 30 {
 					logrus.Infof("old message dropped: %s", message.Text)
 					continue
 				}
+				if isEditedMessage {
+					if time.Since(messageSendTime).Minutes() > 5 {
+						logrus.Infof("old message dropped: %s", message.Text)
+						continue
+					}
+					var editTime = time.Unix(int64(message.EditDate), 0)
+					if time.Since(editTime).Seconds() > 30 {
+						logrus.Infof("old message dropped: %s", message.Text)
+						continue
+					}
+				}
+				var key string = fmt.Sprintf("%d:%d:%d", message.Chat.ID, message.From.ID, messageSendTime.Unix())
+				var canEditSentMsg = false
+				var canEditSentMsgID int
+				if isEditedMessage {
+					logrus.WithField("editedmessage", message.Text).Info("editedmessage received")
+					if cache != nil {
+						if v, ok := cache.Get(key); ok {
+							if ids, ok := v.([]int); ok {
+								if len(ids) > 1 {
+									for _, id := range ids {
+										c.TgBotClient.DeleteMessage(tgbotapi.NewDeleteMessage(message.Chat.ID, id))
+									}
+									cache.Remove(key)
+								} else {
+									canEditSentMsg = true
+									canEditSentMsgID = ids[0]
+								}
+							}
+						}
+					}
+				}
 				replyMessages, err := c.Route.Run(message)
+				var sentMessageIDs []int
 				if err != nil {
 					logrus.Warnf("%s", err.InnerError)
 					if len(err.ReplyText) > 0 {
@@ -170,30 +227,69 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 								ChatID:           message.Chat.ID,
 								ReplyToMessageID: message.MessageID},
 							Text: err.ReplyText}
-						c.TgBotClient.Send(replyMessage)
-						continue
-					}
-				}
-				for _, replyMessage := range replyMessages {
-					var text = replyMessage.Text
-					l := len(text)
-					if replyMessage != nil && l > 0 {
-						if l > 4096 {
-							offset := 0
-							for l > 4096 {
-								remain := l - offset
-								if remain > 4096 {
-									remain = 4096
-								}
-								fm := tgbotapi.MessageConfig{
-									BaseChat: tgbotapi.BaseChat{
-										ChatID:           message.Chat.ID,
-										ReplyToMessageID: message.MessageID},
-									Text: replyMessage.Text[offset : offset+remain]}
-								c.TgBotClient.Send(fm)
-							}
+						sentM, err := c.TgBotClient.Send(replyMessage)
+						if err != nil {
+							logrus.WithError(err).Error("send message failed")
 						} else {
-							c.TgBotClient.Send(*replyMessage)
+							if cache != nil {
+								sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
+								cache.Add(key, sentMessageIDs)
+							}
+						}
+					}
+				} else {
+					if canEditSentMsg && len(replyMessages) == 1 && replyMessages[0] != nil {
+						if l := len(replyMessages[0].Text); l > 0 {
+							fm := tgbotapi.EditMessageTextConfig{
+								BaseEdit: tgbotapi.BaseEdit{
+									ChatID:    message.Chat.ID,
+									MessageID: canEditSentMsgID},
+								Text: replyMessages[0].Text}
+							_, err := c.TgBotClient.Send(fm)
+							if err != nil {
+								logrus.WithError(err).Error("send message failed")
+							}
+						}
+					} else {
+						for _, replyMessage := range replyMessages {
+							var text = replyMessage.Text
+							l := len(text)
+							if replyMessage != nil && l > 0 {
+								if l > 4096 {
+									offset := 0
+									for l > 4096 {
+										remain := l - offset
+										if remain > 4096 {
+											remain = 4096
+										}
+										fm := tgbotapi.MessageConfig{
+											BaseChat: tgbotapi.BaseChat{
+												ChatID:           message.Chat.ID,
+												ReplyToMessageID: message.MessageID},
+											Text: replyMessage.Text[offset : offset+remain]}
+										sentM, err := c.TgBotClient.Send(fm)
+										if err != nil {
+											logrus.WithError(err).Error("send message failed")
+										} else {
+											if cache != nil {
+												sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
+											}
+										}
+									}
+								} else {
+									sentM, err := c.TgBotClient.Send(*replyMessage)
+									if err != nil {
+										logrus.WithError(err).Error("send message failed")
+									} else {
+										if cache != nil {
+											sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
+										}
+									}
+								}
+								if len(sentMessageIDs) > 0 && cache != nil {
+									cache.Add(key, sentMessageIDs)
+								}
+							}
 						}
 					}
 				}
@@ -271,8 +367,7 @@ type WebhookConfig struct {
 //
 // If you do not have a legitimate TLS certificate, you need to include
 // your self signed certificate with the config.
-func (c ChatBot) SetWebhook(config WebhookConfig) (tgbotapi.APIResponse, error) {
-
+func (c ChatBot) setWebhook(config WebhookConfig) (tgbotapi.APIResponse, error) {
 	if config.Certificate == nil {
 		v := url.Values{}
 		v.Add("url", config.URL.String())
@@ -300,7 +395,25 @@ func (c ChatBot) SetWebhook(config WebhookConfig) (tgbotapi.APIResponse, error) 
 	return resp, nil
 }
 
-// Stop the bot
-func (c ChatBot) Stop() {
-	c.TgBotClient.RemoveWebhook()
+func (c ChatBot) deleteWebhook() (tgbotapi.APIResponse, error) {
+	return c.TgBotClient.MakeRequest("deleteWebhook", url.Values{})
+}
+
+// RestartBot restart the bot
+func (c ChatBot) RestartBot() {
+	info, err := c.TgBotClient.GetWebhookInfo()
+	if err != nil {
+		return
+	}
+	if info.LastErrorDate != 0 {
+		logrus.WithField("last error message", info.LastErrorMessage).Info("Telegram callback failed")
+	}
+	if info.IsSet() {
+		var resp tgbotapi.APIResponse
+		if resp, err = c.deleteWebhook(); err != nil {
+			logrus.WithError(err).Error(resp)
+			return
+		}
+	}
+	c.SetWebhook()
 }

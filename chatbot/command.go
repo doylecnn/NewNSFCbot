@@ -57,6 +57,9 @@ func (r Router) HandleFunc(cmd string, f func(message *tgbotapi.Message) (replyM
 
 // Run the command
 func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err *Error) {
+	if !message.IsCommand() {
+		return
+	}
 	ctx := context.Background()
 	var groupID int64 = 0
 	if !message.Chat.IsPrivate() {

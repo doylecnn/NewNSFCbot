@@ -54,9 +54,59 @@ func TelegramAuth(secretKey [32]byte) gin.HandlerFunc {
 	}
 }
 
+// TelegramAdminAuth 确定是不是admin
+func TelegramAdminAuth(secretKey [32]byte, adminUID int) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authData, err := c.Cookie("auth_data_str")
+		if err != nil || len(authData) == 0 {
+			redirectToLogin(c, "cookie: auth_data_str is not set")
+			return
+		}
+		expectedHash, err := c.Cookie("auth_data_hash")
+		if err != nil || len(expectedHash) == 0 {
+			redirectToLogin(c, "cookie: auth_data_hash is not set")
+			return
+		}
+		if uid, err := GetAuthDataInfo(authData, "id"); err == nil {
+			if id, err := strconv.ParseInt(uid, 10, 64); err == nil && int(id) == adminUID {
+				info, err := GetAuthDataInfo(authData, "auth_date")
+				if err != nil {
+					redirectToLogin(c, err.Error())
+					return
+				}
+				authDate, err := strconv.Atoi(info)
+				if err != nil {
+					redirectToLogin(c, fmt.Sprintf("authdate:%s, err: %v", info, err))
+					return
+				}
+
+				mac := hmac.New(sha256.New, secretKey[:])
+				io.WriteString(mac, authData)
+				hash := fmt.Sprintf("%x", mac.Sum(nil))
+				if expectedHash != hash {
+					redirectToLogin(c, "data is not from Telegram")
+					return
+				} else if int64(time.Now().Sub(time.Unix(int64(authDate), 0)).Seconds()) > 86400 {
+					redirectToLogin(c, "Data is outdated")
+					return
+				}
+
+				c.Set("admin_authed", true)
+				c.Next()
+				return
+			}
+		}
+		logrus.WithError(err).Error("auth failed")
+		redirectToLogin(c, "auth failed")
+		return
+	}
+}
+
 func redirectToLogin(c *gin.Context, errorMessage string) {
 	DelCookie(c, "auth_data_str")
 	DelCookie(c, "auth_data_hash")
+	DelCookie(c, "admin_authed")
+	DelCookie(c, "authed")
 	logrus.Printf("errormessage:%s", errorMessage)
 	c.Redirect(http.StatusTemporaryRedirect, "/login?error=LoginFailed")
 	c.Abort()

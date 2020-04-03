@@ -51,15 +51,13 @@ func NewWeb(token, appID, projectID, port string, adminID int, bot chatbot.ChatB
 		authorized.GET("/logout", Logout)
 	}
 
-	admin := r.Group("/admin", middleware.TelegramAuth(SecretKey))
+	admin := r.Group("/admin", middleware.TelegramAdminAuth(SecretKey, AdminID))
 	{
 		admin.GET("/export/:userid", export)
+		admin.GET("/botrestart", func(c *gin.Context) {
+			bot.RestartBot()
+		})
 	}
-
-	r.GET("/botoffline", func(c *gin.Context) {
-		bot.Stop()
-		close(updates)
-	})
 
 	updates = make(chan tgbotapi.Update, bot.TgBotClient.Buffer)
 	r.POST("/"+token, func(c *gin.Context) {

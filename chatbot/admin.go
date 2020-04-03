@@ -199,3 +199,18 @@ func cmdListAllFriendCodes(message *tgbotapi.Message) (replyMessages []*tgbotapi
 
 	return replyMessages, nil
 }
+
+func cmdToggleDebugMode(message *tgbotapi.Message) (replyMessages []*tgbotapi.MessageConfig, err error) {
+	tgbot.Debug = !tgbot.Debug
+	var debugInfo = "debug off"
+	if tgbot.Debug {
+		debugInfo = "debug on"
+	}
+	replyMessages = append(replyMessages, &tgbotapi.MessageConfig{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID:              message.Chat.ID,
+			ReplyToMessageID:    message.MessageID,
+			DisableNotification: true},
+		Text: debugInfo})
+	return replyMessages, nil
+}

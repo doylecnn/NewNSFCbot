@@ -8,6 +8,7 @@ require (
 	github.com/doylecnn/go-fuzzywuzzy v0.0.0-20200304095451-d95270404228
 	github.com/gin-gonic/gin v1.5.0
 	github.com/go-telegram-bot-api/telegram-bot-api v4.6.4+incompatible
+	github.com/hashicorp/golang-lru v0.5.1
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/sirupsen/logrus v1.4.2
