@@ -79,8 +79,8 @@
                 <li class="airportstatus">机场状态：
                     {{if $u.Island.AirportIsOpen}}
                         <span class="name">正开放</span>
-                        {{if $u.Island.AirportPassword}}
-                            <span>密码：</span><span class="name">{{$u.Island.AirportPassword}}</span>
+                        {{if $u.Island.Info}}
+                            <span>额外信息：</span><span class="name">{{$u.Island.Info}}</span>
                         {{end}}
                     {{else}}
                         <span class="name">已关闭</span>

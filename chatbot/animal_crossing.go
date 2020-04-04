@@ -81,7 +81,7 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 			}
 		}
 	} else {
-		island = &storage.Island{Name: islandName, Hemisphere: hemisphere, AirportIsOpen: false, AirportPassword: "", Fruits: fruits, Owner: owner}
+		island = &storage.Island{Name: islandName, Hemisphere: hemisphere, AirportIsOpen: false, Info: "", Fruits: fruits, Owner: owner}
 		if err = u.AddAnimalCrossingIsland(ctx, *island); err != nil {
 			return nil, Error{InnerError: err,
 				ReplyText: fmt.Sprintf("记录岛屿时出错狸"),
@@ -148,7 +148,7 @@ func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 	if !message.Chat.IsPrivate() {
 		groupID = message.Chat.ID
 	}
-	password := strings.TrimSpace(message.CommandArguments())
+	islandInfo := strings.TrimSpace(message.CommandArguments())
 
 	ctx := context.Background()
 	u, err := storage.GetUser(ctx, message.From.ID, groupID)
@@ -182,9 +182,9 @@ func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 				Text: "没有找到您的记录，请先使用 addisland 命令添加岛屿记录狸"}},
 			nil
 	}
-	if !island.AirportIsOpen || island.AirportPassword != password {
+	if !island.AirportIsOpen || island.Info != islandInfo {
 		island.AirportIsOpen = true
-		island.AirportPassword = password
+		island.Info = islandInfo
 		u.SetAirportStatus(ctx, *island)
 	}
 	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
@@ -235,7 +235,6 @@ func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	}
 	if island.AirportIsOpen {
 		island.AirportIsOpen = false
-		island.AirportPassword = ""
 		u.SetAirportStatus(ctx, *island)
 	}
 	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{

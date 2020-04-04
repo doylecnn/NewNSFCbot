@@ -27,8 +27,8 @@
         {{end}}
         {{if .island.AirportIsOpen}}
             <span>正开放</span>
-            {{if .island.AirportPassword}}
-                <span>密码：</span><span>{{.island.AirportPassword}}</span>
+            {{if .island.Info}}
+                <span>额外信息：</span><span>{{.island.Info}}</span>
             {{end}}
         {{else}}
             <span>已关闭</span>

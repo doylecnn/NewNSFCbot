@@ -49,7 +49,7 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 /addisland 添加你的动森岛：/addisland 岛名 N/S 岛主 其它信息
 /sac 搜索你回复或at 的人的AnimalCrossing 信息
 /myisland 显示自己的岛信息
-/open_island 开放自己的岛 相同指令 /open_airport
+/open_island 开放自己的岛 命令后可以附上岛屿今日特色内容 相同指令 /open_airport
 /close_island 关闭自己的岛 相同指令 /close_airport
 /dtcj 更新大头菜价格, 不带参数时，和 /gj 相同
 /gj 大头菜最新价格，只显示同群中价格从高到低前10

@@ -357,13 +357,13 @@ func GetPriceHistory(ctx context.Context, uid int) (priceHistory []PriceHistory,
 
 // Island in AnimalCrossing
 type Island struct {
-	Name            string       `firestore:"name"`
-	Hemisphere      int          `firestore:"hemisphere"`
-	AirportIsOpen   bool         `firestore:"AirportIsOpen"`
-	AirportPassword string       `firestore:"AirportPassword"`
-	Fruits          []string     `firestore:"Fruits"`
-	LastPrice       PriceHistory `firestore:"LastPrice"`
-	Owner           string       `firestore:"owner,omitempty"`
+	Name          string       `firestore:"name"`
+	Hemisphere    int          `firestore:"hemisphere"`
+	AirportIsOpen bool         `firestore:"AirportIsOpen"`
+	Info          string       `firestore:"Info"`
+	Fruits        []string     `firestore:"Fruits"`
+	LastPrice     PriceHistory `firestore:"LastPrice"`
+	Owner         string       `firestore:"owner,omitempty"`
 }
 
 // GetUsersByAnimalCrossingIslandName get users by island name
@@ -467,8 +467,8 @@ func (i Island) String() string {
 	var airportstatus string
 	if i.AirportIsOpen {
 		airportstatus = "现正开放"
-		if len(i.AirportPassword) != 0 {
-			airportstatus += fmt.Sprintf("，密码：%s", i.AirportPassword)
+		if len(i.Info) != 0 {
+			airportstatus += fmt.Sprintf("，额外信息：%s", i.Info)
 		}
 	} else {
 		airportstatus = "现已关闭"
