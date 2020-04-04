@@ -62,9 +62,9 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 			ReplyText: fmt.Sprintf("添加岛屿时失败狸。error info: %v", err),
 		}
 	}
-	if island, err = u.GetAnimalCrossingIsland(ctx); err != nil {
+	if island, err = u.GetAnimalCrossingIsland(ctx); err != nil && !strings.HasPrefix(err.Error(), "Not found island of userID:") {
 		return nil, Error{InnerError: err,
-			ReplyText: fmt.Sprintf("请先添加FC狸。error info: %v", err),
+			ReplyText: fmt.Sprintf("添加岛屿时失败狸。error info: %v", err),
 		}
 	} else if err == nil && island != nil {
 		island, err = u.GetAnimalCrossingIsland(ctx)
@@ -77,14 +77,14 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		island.Owner = owner
 		if err = u.SetAirportStatus(ctx, *island); err != nil {
 			return nil, Error{InnerError: err,
-				ReplyText: fmt.Sprintf("更新岛屿信息时出错狸"),
+				ReplyText: fmt.Sprintf("更新岛屿信息时出错狸。error info: %v", err),
 			}
 		}
 	} else {
 		island = &storage.Island{Name: islandName, Hemisphere: hemisphere, AirportIsOpen: false, Info: "", Fruits: fruits, Owner: owner}
 		if err = u.AddAnimalCrossingIsland(ctx, *island); err != nil {
 			return nil, Error{InnerError: err,
-				ReplyText: fmt.Sprintf("记录岛屿时出错狸"),
+				ReplyText: fmt.Sprintf("记录岛屿时出错狸。error info: %v", err),
 			}
 		}
 	}

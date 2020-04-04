@@ -94,6 +94,19 @@ func cmdAddFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 		nil
 }
 
+func cmdDeleteMe(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	ctx := context.Background()
+	u, err := storage.GetUser(ctx, message.From.ID, 0)
+	u.Delete(ctx)
+	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: true},
+			Text: "所有信息已删除狸。如要使用需要从addfc 开始重新登记。"}},
+		nil
+}
+
 func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	ctx := context.Background()
 	u, err := storage.GetUser(ctx, message.From.ID, 0)

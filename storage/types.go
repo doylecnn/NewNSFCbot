@@ -467,9 +467,6 @@ func (i Island) String() string {
 	var airportstatus string
 	if i.AirportIsOpen {
 		airportstatus = "现正开放"
-		if len(i.Info) != 0 {
-			airportstatus += fmt.Sprintf("，额外信息：%s", i.Info)
-		}
 	} else {
 		airportstatus = "现已关闭"
 	}
@@ -482,7 +479,11 @@ func (i Island) String() string {
 	if !strings.HasSuffix(i.Name, "岛") {
 		i.Name += "岛"
 	}
-	return strings.TrimSpace(fmt.Sprintf("位于%s半球的岛屿：%s, 岛民代表：%s。 %s\n岛屿有水果：%s", hemisphere, i.Name, i.Owner, airportstatus, strings.Join(i.Fruits, ", ")))
+	var text string = fmt.Sprintf("位于%s半球的岛屿：%s, 岛民代表：%s。 %s\n岛屿有水果：%s", hemisphere, i.Name, i.Owner, airportstatus, strings.Join(i.Fruits, ", "))
+	if i.AirportIsOpen && len(i.Info) > 0 {
+		text += "\n\n本回开放特色信息：" + i.Info
+	}
+	return text
 }
 
 // NSAccount Nintendo Switch account
