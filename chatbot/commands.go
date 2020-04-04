@@ -205,6 +205,37 @@ func inlineQueryMyFC(query *tgbotapi.InlineQuery) (*tgbotapi.InlineConfig, error
 	}, nil
 }
 
+func inlineQueryMyIsland(query *tgbotapi.InlineQuery) (*tgbotapi.InlineConfig, error) {
+	ctx := context.Background()
+	u, err := storage.GetUser(ctx, query.From.ID, 0)
+	if err != nil && !strings.HasPrefix(err.Error(), "Not found userID:") {
+		return nil, nil
+	}
+	if err != nil && strings.HasPrefix(err.Error(), "Not found userID:") {
+		return &tgbotapi.InlineConfig{
+			InlineQueryID: query.ID,
+			Results:       []interface{}{tgbotapi.NewInlineQueryResultArticle(query.ID, "您没有记录过您的 Friend Code", "请先使 addFC 登记，再用 addisland 命令添加岛屿")},
+			IsPersonal:    true,
+		}, nil
+	}
+	island, err := u.GetAnimalCrossingIsland(ctx)
+	if err != nil {
+		return nil, nil
+	}
+	if island == nil {
+		return &tgbotapi.InlineConfig{
+			InlineQueryID: query.ID,
+			Results:       []interface{}{tgbotapi.NewInlineQueryResultArticle(query.ID, "您没有记录过您的 Friend Code", "请先使 addFC 登记，再用 addisland 命令添加岛屿")},
+			IsPersonal:    true,
+		}, nil
+	}
+	return &tgbotapi.InlineConfig{
+		InlineQueryID: query.ID,
+		Results:       []interface{}{tgbotapi.NewInlineQueryResultArticle(query.ID, "您的 岛屿 记录", island.String())},
+		IsPersonal:    true,
+	}, nil
+}
+
 func cmdWebLogin(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{

@@ -103,12 +103,8 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 }
 
 func cmdMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
-	var groupID int64 = 0
-	if !message.Chat.IsPrivate() {
-		groupID = message.Chat.ID
-	}
 	ctx := context.Background()
-	u, err := storage.GetUser(ctx, message.From.ID, groupID)
+	u, err := storage.GetUser(ctx, message.From.ID, 0)
 	if err != nil && !strings.HasPrefix(err.Error(), "Not found userID:") {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询记录时出错了狸",

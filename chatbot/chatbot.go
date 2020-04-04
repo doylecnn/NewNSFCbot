@@ -178,6 +178,12 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 			} else {
 				c.TgBotClient.AnswerInlineQuery(*result)
 			}
+		} else if inlineQuery != nil && inlineQuery.Query == "myisland" {
+			if result, err := inlineQueryMyIsland(inlineQuery); err != nil {
+				logrus.Warn(err)
+			} else {
+				c.TgBotClient.AnswerInlineQuery(*result)
+			}
 		} else if message != nil && message.IsCommand() {
 			if message.Chat.IsGroup() || message.Chat.IsSuperGroup() || message.Chat.IsPrivate() {
 				messageSendTime := message.Time()
