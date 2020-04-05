@@ -76,9 +76,11 @@ func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 			g = storage.Group{ID: message.Chat.ID, Type: message.Chat.Type, Title: message.Chat.Title}
 			g.Create(ctx)
 		} else {
-			g.Type = message.Chat.Type
-			g.Title = message.Chat.Title
-			g.Update(ctx)
+			if g.Title != message.Chat.Title || g.Type != message.Chat.Type {
+				g.Type = message.Chat.Type
+				g.Title = message.Chat.Title
+				g.Update(ctx)
+			}
 		}
 	}
 	cmd := message.Command()

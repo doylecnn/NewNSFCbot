@@ -637,10 +637,12 @@ func GetGroup(ctx context.Context, groupID int64) (group Group, err error) {
 	dsnap, err := client.Doc(fmt.Sprintf("groups/%d", groupID)).Get(ctx)
 	if err != nil && status.Code(err) != codes.NotFound {
 		logrus.Warnf("Failed when get group: %v", err)
+		return
 	}
 	if !dsnap.Exists() || (err != nil && status.Code(err) == codes.NotFound) {
 		logrus.Warnf("Not found group: %d", groupID)
 		err = fmt.Errorf("Not found group: %d", groupID)
+		return
 	}
 	if err = dsnap.DataTo(&group); err != nil {
 		return
