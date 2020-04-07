@@ -41,6 +41,7 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 	tgbot = bot
 
 	var botHelpText = `/addfc 添加你的fc，可批量添加：/addfc id1:fc1;id2:fc2……
+/delfc fc 用于删除已登记的FC
 /myfc 显示自己的所有fc
 /sfc 搜索你回复或at 的人的fc
 /fc 与sfc 相同
@@ -84,6 +85,7 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 		logrus.Warn(err)
 	}
 	router.HandleFunc("addfc", cmdAddFC)
+	router.HandleFunc("delfc", cmdDelFC)
 	router.HandleFunc("myfc", cmdMyFC)
 	router.HandleFunc("sfc", cmdSearchFC)
 	router.HandleFunc("fc", cmdSearchFC)

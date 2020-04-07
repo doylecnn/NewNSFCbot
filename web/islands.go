@@ -68,7 +68,7 @@ func Islands(c *gin.Context) {
 				if !strings.HasSuffix(island.Name, "岛") {
 					island.Name += "岛"
 				}
-				user.Island = *island
+				user.Island = island
 				priceOutDate = append(priceOutDate, time.Since(island.LastPrice.Date) > 12*time.Hour)
 
 				haveIslandUsers = append(haveIslandUsers, *user)

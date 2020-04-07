@@ -23,11 +23,12 @@ var (
 
 // User Telegram User
 type User struct {
-	ID         int         `firestore:"id"`
-	Name       string      `firestore:"name"`
-	NSAccounts []NSAccount `firestore:"ns_accounts,omitempty"`
-	Island     Island      `firestore:"-"`
-	GroupIDs   []int64     `firestore:"groupids,omitempty"`
+	ID              int         `firestore:"id"`
+	Name            string      `firestore:"name"`
+	NameInsensitive string      `firestore:"name_insensitive"`
+	NSAccounts      []NSAccount `firestore:"ns_accounts,omitempty"`
+	Island          *Island     `firestore:"-"`
+	GroupIDs        []int64     `firestore:"groupids,omitempty"`
 }
 
 // Create new user
@@ -81,6 +82,21 @@ func (u User) Delete(ctx context.Context) (err error) {
 	if _, err = docRef.Delete(ctx); err != nil {
 		logrus.Warnf("Failed delete doc user: %v", err)
 	}
+	return
+}
+
+// DeleteNSAccount delete NSAccount
+func (u User) DeleteNSAccount(ctx context.Context, account NSAccount) (err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	co := client.Doc(fmt.Sprintf("users/%d", u.ID))
+	_, err = co.Update(ctx, []firestore.Update{
+		{Path: "ns_accounts", Value: firestore.ArrayRemove(account)},
+	})
 	return
 }
 
@@ -154,7 +170,7 @@ func GetUsersByName(ctx context.Context, username string, groupID int64) (users 
 	defer client.Close()
 
 	users = []*User{}
-	iter := client.Collection("users").Where("name", "==", username).Where("groupids", "array-contains", groupID).Documents(ctx)
+	iter := client.Collection("users").Where("name_insensitive", "==", strings.ToLower(username)).Where("groupids", "array-contains", groupID).Documents(ctx)
 	for {
 		doc, err := iter.Next()
 		if err == iterator.Done {
@@ -201,7 +217,7 @@ func GetUsersByNSAccountName(ctx context.Context, username string, groupID int64
 			}
 			if u != nil {
 				for _, a := range u.NSAccounts {
-					if a.Name == username {
+					if a.NameInsensitive == strings.ToLower(username) {
 						users = append(users, u)
 						break
 					}
@@ -243,38 +259,6 @@ func AddGroupIDToUserGroupIDs(ctx context.Context, userID int, groupID int64) (e
 	return
 }
 
-// AddAnimalCrossingIsland add island name
-func (u *User) AddAnimalCrossingIsland(ctx context.Context, island Island) (err error) {
-	if u == nil {
-		return
-	}
-
-	client, err := firestore.NewClient(ctx, ProjectID)
-	if err != nil {
-		return
-	}
-	defer client.Close()
-	colref := client.Collection(fmt.Sprintf("users/%d/games", u.ID))
-	_, err = colref.Doc("animal_crossing").Set(ctx, island)
-	return
-}
-
-// SetAirportStatus Set Airport Status
-func (u *User) SetAirportStatus(ctx context.Context, island Island) (err error) {
-	if u == nil {
-		return
-	}
-
-	client, err := firestore.NewClient(ctx, ProjectID)
-	if err != nil {
-		return
-	}
-	defer client.Close()
-	colref := client.Collection(fmt.Sprintf("users/%d/games", u.ID))
-	_, err = colref.Doc("animal_crossing").Set(ctx, island)
-	return
-}
-
 // GetAnimalCrossingIsland get island name
 func (u *User) GetAnimalCrossingIsland(ctx context.Context) (island *Island, err error) {
 	if u == nil {
@@ -286,7 +270,8 @@ func (u *User) GetAnimalCrossingIsland(ctx context.Context) (island *Island, err
 		return
 	}
 	defer client.Close()
-	dsnap, err := client.Doc(fmt.Sprintf("users/%d/games/animal_crossing", u.ID)).Get(ctx)
+	var islandDocPath = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
+	dsnap, err := client.Doc(islandDocPath).Get(ctx)
 	if err != nil && status.Code(err) != codes.NotFound {
 		logrus.Warnf("failed when get island: %v", err)
 		return nil, err
@@ -295,7 +280,10 @@ func (u *User) GetAnimalCrossingIsland(ctx context.Context) (island *Island, err
 		return nil, fmt.Errorf("Not found island of userID: %d", u.ID)
 	}
 	island = &Island{}
-	err = dsnap.DataTo(island)
+	if err = dsnap.DataTo(island); err != nil {
+		return
+	}
+	island.Path = islandDocPath
 	return
 }
 
@@ -357,13 +345,27 @@ func GetPriceHistory(ctx context.Context, uid int) (priceHistory []PriceHistory,
 
 // Island in AnimalCrossing
 type Island struct {
-	Name          string       `firestore:"name"`
-	Hemisphere    int          `firestore:"hemisphere"`
-	AirportIsOpen bool         `firestore:"AirportIsOpen"`
-	Info          string       `firestore:"Info"`
-	Fruits        []string     `firestore:"Fruits"`
-	LastPrice     PriceHistory `firestore:"LastPrice"`
-	Owner         string       `firestore:"owner,omitempty"`
+	Path             string       `firestore:"-"`
+	Name             string       `firestore:"name"`
+	NameInsensitive  string       `firestore:"name_insensitive,omitempty"`
+	Hemisphere       int          `firestore:"hemisphere"`
+	AirportIsOpen    bool         `firestore:"AirportIsOpen"`
+	Info             string       `firestore:"Info"`
+	Fruits           []string     `firestore:"Fruits"`
+	LastPrice        PriceHistory `firestore:"LastPrice"`
+	Owner            string       `firestore:"owner,omitempty"`
+	OwnerInsensitive string       `firestore:"owner_insensitive,omitempty"`
+}
+
+// Update island info
+func (i Island) Update(ctx context.Context) (err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return
+	}
+	defer client.Close()
+	_, err = client.Doc(i.Path).Set(ctx, i)
+	return
 }
 
 // GetUsersByAnimalCrossingIslandName get users by island name
@@ -392,6 +394,7 @@ func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupI
 		if islandDoc, err := doc.Ref.Collection("games").Doc("animal_crossing").Get(ctx); err == nil && islandDoc.Exists() {
 			var island Island
 			islandDoc.DataTo(&island)
+			name = strings.ToLower(name)
 			if strings.HasSuffix(name, "岛") {
 				r := []rune(name)
 				l := len(r)
@@ -399,13 +402,14 @@ func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupI
 					name = string(r[:l-1])
 				}
 			}
-			if island.Name == name || island.Name == name+"岛" {
+			if island.NameInsensitive == name || island.NameInsensitive == name+"岛" {
 				u := &User{}
 				if err = doc.DataTo(u); err != nil {
 					logrus.WithError(err).Error("error when DataTo user")
 					return nil, err
 				}
 				if u != nil {
+					u.Island = &island
 					users = append(users, u)
 					break
 				}
@@ -441,13 +445,14 @@ func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string, g
 		if islandDoc, err := doc.Ref.Collection("games").Doc("animal_crossing").Get(ctx); err == nil && islandDoc.Exists() {
 			var island Island
 			islandDoc.DataTo(&island)
-			if island.Owner == name {
+			if island.OwnerInsensitive == strings.ToLower(name) {
 				u := &User{}
 				if err = doc.DataTo(u); err != nil {
 					logrus.WithError(err).Error("error when DataTo user")
 					return nil, err
 				}
 				if u != nil {
+					u.Island = &island
 					users = append(users, u)
 					break
 				}
@@ -488,8 +493,9 @@ func (i Island) String() string {
 
 // NSAccount Nintendo Switch account
 type NSAccount struct {
-	Name string     `firestore:"name,omitempty"`
-	FC   FriendCode `firestore:"friend_code,omitempty"`
+	Name            string     `firestore:"name,omitempty"`
+	NameInsensitive string     `firestore:"name_insensitive,omitempty"`
+	FC              FriendCode `firestore:"friend_code,omitempty"`
 }
 
 // ParseAccountsFromString Parse FriendCode From String
@@ -510,7 +516,7 @@ func ParseAccountsFromString(msg, defaultname string) (accounts []NSAccount, err
 			} else {
 				name = defaultname
 			}
-			accounts = append(accounts, NSAccount{name, FriendCode(code)})
+			accounts = append(accounts, NSAccount{name, strings.ToLower(name), FriendCode(code)})
 		}
 	}
 	return accounts, nil

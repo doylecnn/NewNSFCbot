@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/doylecnn/new-nsfc-bot/storage"
@@ -52,6 +53,7 @@ func cmdAddFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 		} else {
 			u = &storage.User{ID: message.From.ID, Name: username, NSAccounts: accounts}
 		}
+		u.NameInsensitive = strings.ToLower(u.Name)
 		if err = u.Create(ctx); err != nil {
 			return nil, Error{InnerError: err,
 				ReplyText: fmt.Sprintf("创建用户信息时出错: %v", err),
@@ -91,6 +93,55 @@ func cmdAddFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
 			Text: fmt.Sprintf("完成。添加/更新了 %d 个 Friend Code", len(accounts))}},
+		nil
+}
+
+func cmdDelFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	arg := strings.TrimSpace(message.CommandArguments())
+	if len(arg) < 12 {
+		return
+	}
+	var fc storage.FriendCode
+	if fcnum, lerr := strconv.ParseInt(arg, 10, 64); lerr == nil {
+		fc = storage.FriendCode(fcnum)
+	} else {
+		return nil, lerr
+	}
+
+	ctx := context.Background()
+	u, err := storage.GetUser(ctx, message.From.ID, 0)
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "Not found userID:") {
+			return nil, Error{InnerError: err,
+				ReplyText: fmt.Sprintf("本bot 没有记录您的FC信息: %v", err),
+			}
+		}
+		return nil, Error{InnerError: err,
+			ReplyText: fmt.Sprintf("执行指令时出错: %v", err),
+		}
+	}
+	for _, a := range u.NSAccounts {
+		if a.FC == fc {
+			if err = u.DeleteNSAccount(ctx, a); err == nil {
+				return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+						BaseChat: tgbotapi.BaseChat{
+							ChatID:              message.Chat.ID,
+							ReplyToMessageID:    message.MessageID,
+							DisableNotification: true},
+						Text: fmt.Sprintf("已删除您的FC：%s。", fc.String())}},
+					nil
+			}
+			return nil, Error{InnerError: err,
+				ReplyText: fmt.Sprintf("删除FC时出错: %v", err),
+			}
+		}
+	}
+	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: true},
+			Text: fmt.Sprintf("没有找到FC为 %s 的记录狸。", fc.String())}},
 		nil
 }
 
