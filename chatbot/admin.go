@@ -81,7 +81,6 @@ func cmdUpdateGroupInfo(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 	}
 
 	for _, u := range users {
-		var changed bool = false
 		for _, gid := range u.GroupIDs {
 			if _, exists := groupIDs[gid]; !exists {
 				groupIDs[gid] = struct{}{}
@@ -91,14 +90,6 @@ func cmdUpdateGroupInfo(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 			var chatmember tgbotapi.ChatMember
 			chatmember, err = tgbot.GetChatMember(tgbotapi.ChatConfigWithUser{ChatID: gid, UserID: u.ID})
 			if err != nil {
-				if err.Error() == "Bad Request: user not found" {
-					logrus.WithError(err).WithFields(logrus.Fields{
-						"uid":           u.ID,
-						"user_groupids": u.GroupIDs,
-						"gid":           gid,
-					}).Warn("error when get chat member")
-					continue
-				}
 				logrus.WithError(err).WithFields(logrus.Fields{
 					"uid":           u.ID,
 					"user_groupids": u.GroupIDs,
@@ -107,46 +98,22 @@ func cmdUpdateGroupInfo(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 				continue
 			}
 			if chatmember.HasLeft() || !(chatmember.IsMember() || chatmember.IsCreator() || chatmember.IsAdministrator()) {
-				// if len(u.GroupIDs) > 0 {
-				// 	for i, gid := range u.GroupIDs {
-				// 		if gid == message.Chat.ID {
-				// 			// Remove the element at index i from a.
-				// 			u.GroupIDs[i] = u.GroupIDs[len(u.GroupIDs)-1] // Copy last element to index i.
-				// 			u.GroupIDs[len(u.GroupIDs)-1] = 0             // Erase last element (write zero value).
-				// 			u.GroupIDs = u.GroupIDs[:len(u.GroupIDs)-1]   // Truncate slice.
-				// 			changed = true
-				// 			break
-				// 		}
-				// 	}
-				// }
 				logrus.WithFields(logrus.Fields{
 					"uid":           u.ID,
 					"name":          u.Name,
 					"user_groupids": u.GroupIDs,
 					"gid":           gid,
 				}).Debug("用户不在群")
+				ctx := context.Background()
+				if err := storage.RemoveGroupIDFromUserGroupIDs(ctx, message.From.ID, gid); err != nil {
+					logrus.WithError(err).Error("remove groupid from user's groupids failed")
+				}
 				continue
 			} else {
-				if len(u.GroupIDs) == 0 {
-					changed = true
-					u.GroupIDs = append(u.GroupIDs, gid)
-				} else {
-					var groupidExists bool = false
-					for _, id := range u.GroupIDs {
-						if id == gid {
-							groupidExists = true
-							break
-						}
-					}
-					if !groupidExists {
-						changed = true
-						u.GroupIDs = append(u.GroupIDs, gid)
-					}
+				if lerr := storage.AddGroupIDToUserGroupIDs(ctx, message.From.ID, gid); lerr != nil {
+					logrus.WithError(err).Error("add groupid to user's groupids failed")
 				}
 			}
-		}
-		if changed {
-			u.Update(ctx)
 		}
 	}
 
