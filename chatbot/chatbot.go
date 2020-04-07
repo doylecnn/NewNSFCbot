@@ -54,6 +54,7 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 /open_island 开放自己的岛 命令后可以附上岛屿今日特色内容 相同指令 /open_airport
 /close_island 关闭自己的岛 相同指令 /close_airport
 /dtcj 更新大头菜价格, 不带参数时，和 /gj 相同
+/weekprice 当周菜价回看/预测
 /gj 大头菜最新价格，只显示同群中价格从高到低前10
 /ghs 搞化石交换用的登记spreadsheet链接
 /islands 提供网页展示本bot 记录的所有动森岛屿信息
@@ -101,6 +102,7 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 	router.HandleFunc("close_airport", cmdCloseIsland)
 	router.HandleFunc("close_island", cmdCloseIsland)
 	router.HandleFunc("dtcj", cmdDTCPriceUpdate)
+	router.HandleFunc("weekprice", cmdDTCWeekPriceAndPredict)
 	router.HandleFunc("gj", cmdDTCMaxPriceInGroup)
 	router.HandleFunc("sac", cmdSearchAnimalCrossingInfo)
 	router.HandleFunc("ghs", cmdHuaShiJiaoHuanBiaoGe)

@@ -284,6 +284,11 @@ func (u *User) GetAnimalCrossingIsland(ctx context.Context) (island *Island, err
 		return
 	}
 	island.Path = islandDocPath
+	local, err := time.LoadLocation("Asia/Hong_Kong") //服务器设置的时区
+	if err != nil {
+		return
+	}
+	island.LastPrice.Date = island.LastPrice.Date.In(local)
 	return
 }
 
@@ -317,13 +322,17 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) error {
 }
 
 // GetPriceHistory get price history
-func GetPriceHistory(ctx context.Context, uid int) (priceHistory []PriceHistory, err error) {
+func GetPriceHistory(ctx context.Context, uid int) (priceHistory []*PriceHistory, err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
 	if err != nil {
 		return nil, err
 	}
 	defer client.Close()
 
+	local, err := time.LoadLocation("Asia/Hong_Kong") //服务器设置的时区
+	if err != nil {
+		return nil, err
+	}
 	iter := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid)).Documents(ctx)
 	for {
 		doc, err := iter.Next()
@@ -333,11 +342,45 @@ func GetPriceHistory(ctx context.Context, uid int) (priceHistory []PriceHistory,
 		if err != nil {
 			return nil, err
 		}
-		var price PriceHistory
-		if err = doc.DataTo(&price); err != nil {
+		var price *PriceHistory = &PriceHistory{}
+		if err = doc.DataTo(price); err != nil {
 			logrus.Warn(err)
 			return nil, err
 		}
+		price.Date = price.Date.In(local)
+		priceHistory = append(priceHistory, price)
+	}
+	return priceHistory, nil
+}
+
+// GetWeekDTCPriceHistory 获得当前周自周日起的价格。周日是买入价
+func GetWeekDTCPriceHistory(ctx context.Context, uid int) (priceHistory []*PriceHistory, err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	local, err := time.LoadLocation("Asia/Hong_Kong") //服务器设置的时区
+	if err != nil {
+		return nil, err
+	}
+	var weekStartDate = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
+	iter := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid)).Where("Date", ">=", weekStartDate).Documents(ctx)
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		var price *PriceHistory = &PriceHistory{}
+		if err = doc.DataTo(price); err != nil {
+			logrus.Warn(err)
+			return nil, err
+		}
+		price.Date = price.Date.In(local)
 		priceHistory = append(priceHistory, price)
 	}
 	return priceHistory, nil

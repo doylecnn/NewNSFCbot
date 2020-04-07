@@ -52,7 +52,9 @@ func NewWeb(token, appID, projectID, port string, adminID int, bot chatbot.ChatB
 	r.GET("/auth", web.Auth)
 	r.GET("/login", web.Login)
 
-	authorized := r.Group("/", middleware.TelegramAuth(secretKey))
+	r.Static("/ACNH_Turnip_Calculator", "web/assets/ACNH_Turnip_Calculator/dist")
+
+	authorized := r.Group("/authed", middleware.TelegramAuth(secretKey))
 	{
 		authorized.GET("/user/:userid", web.User)
 		authorized.GET("/islands", web.Islands)

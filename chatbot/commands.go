@@ -147,8 +147,13 @@ func cmdDelFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 
 func cmdDeleteMe(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	ctx := context.Background()
-	u, err := storage.GetUser(ctx, message.From.ID, 0)
-	u.Delete(ctx)
+	if u, err := storage.GetUser(ctx, message.From.ID, 0); err != nil {
+		return nil, Error{InnerError: err,
+			ReplyText: fmt.Sprintf("删除信息时出错: %v", err),
+		}
+	} else if u != nil {
+		u.Delete(ctx)
+	}
 	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,

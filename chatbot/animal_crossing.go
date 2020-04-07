@@ -289,7 +289,7 @@ func cmdListIslands(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
-			Text: "https://tgbot-ns-fc-wed-18-mar-2020.appspot.com/islands"}},
+			Text: "https://tgbot-ns-fc-wed-18-mar-2020.appspot.com/authed/islands"}},
 		nil
 }
 
@@ -326,6 +326,57 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
 			Text: "更新大头菜报价成功狸"}},
+		nil
+}
+
+// cmdDTCWeekPriceAndPredict 当周菜价回看/预测
+func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	uid := message.From.ID
+	ctx := context.Background()
+	priceHistory, err := storage.GetWeekDTCPriceHistory(ctx, uid)
+	if err != nil {
+		if "Not found game: animal_crossing" == err.Error() {
+			return nil, Error{InnerError: err,
+				ReplyText: "请先登记你的岛屿狸。\n本bot 原本是为交换Nintendo Switch Friend Code而生。\n所以建议先/addfc 登记fc，再/addisland 登记岛屿，再/dtcj 发布价格。\n具体命令帮助请/help",
+			}
+		}
+		return nil, Error{InnerError: err,
+			ReplyText: "更新报价时出错狸",
+		}
+	}
+	/*	本周您的报价如下: 可以 点我 查询本周价格趋势
+	 *	| Sun | Mon | Tue | Wed | Thu | Fri | Sat |
+	 *	| - | -/105 | -/- | -/- | -/- | -/- | -/- |
+	 *	未录入星期日数据 无法生成查询数据 */
+	var weekPrices []string = []string{"\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-"}
+	for _, p := range priceHistory {
+		if p != nil {
+			var j = int(p.Date.Weekday())
+			if j == 0 {
+				weekPrices[j] = fmt.Sprintf("%d", p.Price)
+			} else if p.Date.Hour() < 12 {
+				weekPrices[j*2-1] = fmt.Sprintf("%d", p.Price)
+			} else {
+				weekPrices[j*2] = fmt.Sprintf("%d", p.Price)
+			}
+		}
+	}
+	var datePrice []string = make([]string, 7)
+	datePrice[0] = weekPrices[0]
+	for i := 1; i < 13; i += 2 {
+		datePrice[(i+1)/2] = fmt.Sprintf("%s/%s", weekPrices[i], weekPrices[i+1])
+	}
+	var replyText string = fmt.Sprintf("本周您的报价如下: 可以 [点我](https://%s.appspot.com/ACNH_Turnip_Calculator/?filters=%s) 查询本周价格趋势\n"+
+		"\\| Sun \\| Mon \\| Tue \\| Wed \\| Thu \\| Fri \\| Sat \\|\n"+
+		"\\| %s \\|", _projectID, strings.Join(weekPrices, "&filters="), strings.Join(datePrice, " \\| "))
+	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: true},
+			Text:      replyText,
+			ParseMode: "MarkdownV2",
+		}},
 		nil
 }
 
