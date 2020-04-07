@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/doylecnn/new-nsfc-bot/chatbot"
@@ -30,30 +31,37 @@ type Web struct {
 
 // NewWeb return new Web
 func NewWeb(token, appID, projectID, port string, adminID int, bot chatbot.ChatBot) (web Web, updates chan tgbotapi.Update) {
-	AdminID = adminID
 	gin.SetMode(gin.ReleaseMode)
-	TgBotClient = bot.TgBotClient
 	r := gin.New()
+	secretKey := sha256.Sum256([]byte(token))
+	web = Web{
+		Domain:      fmt.Sprintf("%s.appspot.com", appID),
+		Port:        port,
+		TgBotToken:  token,
+		TgBotClient: bot.TgBotClient,
+		SecretKey:   secretKey,
+		Route:       r,
+		AdminID:     adminID,
+	}
 
 	r.Use(gin.Recovery())
 	r.LoadHTMLGlob("web/templates/*")
 
-	r.GET("/", Index)
-	r.GET("/index", Index)
-	r.GET("/auth", Auth)
-	r.GET("/login", Login)
+	r.GET("/", web.Index)
+	r.GET("/index", web.Index)
+	r.GET("/auth", web.Auth)
+	r.GET("/login", web.Login)
 
-	SecretKey = sha256.Sum256([]byte(token))
-	authorized := r.Group("/", middleware.TelegramAuth(SecretKey))
+	authorized := r.Group("/", middleware.TelegramAuth(secretKey))
 	{
-		authorized.GET("/user/:userid", User)
-		authorized.GET("/islands", Islands)
-		authorized.GET("/logout", Logout)
+		authorized.GET("/user/:userid", web.User)
+		authorized.GET("/islands", web.Islands)
+		authorized.GET("/logout", web.Logout)
 	}
 
-	admin := r.Group("/admin", middleware.TelegramAdminAuth(SecretKey, AdminID))
+	admin := r.Group("/admin", middleware.TelegramAdminAuth(secretKey, web.AdminID))
 	{
-		admin.GET("/export/:userid", export)
+		admin.GET("/export/:userid", web.export)
 		admin.GET("/botrestart", func(c *gin.Context) {
 			bot.RestartBot()
 		})
@@ -69,15 +77,6 @@ func NewWeb(token, appID, projectID, port string, adminID int, bot chatbot.ChatB
 		updates <- update
 	})
 
-	web = Web{
-		Domain:      fmt.Sprintf("%s.appspot.com", appID),
-		Port:        port,
-		TgBotToken:  token,
-		TgBotClient: bot.TgBotClient,
-		SecretKey:   SecretKey,
-		Route:       r,
-		AdminID:     adminID,
-	}
 	return
 }
 
@@ -110,13 +109,39 @@ type group struct {
 	Title string `json:"title"`
 }
 
-func export(c *gin.Context) {
-	if v, exists := c.Get("authed"); exists {
+func (w Web) setCookie(c *gin.Context, name, value string) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     name,
+		Value:    url.QueryEscape(value),
+		MaxAge:   86400,
+		Path:     "/",
+		Domain:   c.Request.URL.Host,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func (w Web) delCookie(c *gin.Context, name string) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     name,
+		Value:    "",
+		MaxAge:   -1,
+		Path:     "/",
+		Domain:   c.Request.URL.Host,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func (w Web) export(c *gin.Context) {
+	if v, exists := c.Get("admin_authed"); exists {
 		if authed, ok := v.(bool); ok && authed {
 			authData, _ := c.Cookie("auth_data_str")
 			userID, err := middleware.GetAuthDataInfo(authData, "id")
 			if err != nil {
-				logrus.Print(err)
+				logrus.WithError(err).Error("auth failed")
 				c.Abort()
 				return
 			}
@@ -124,15 +149,15 @@ func export(c *gin.Context) {
 			if userID == userid {
 				uid, err := strconv.ParseInt(userid, 10, 64)
 				if err != nil {
-					logrus.Warn(err)
+					logrus.WithError(err).Error("auth failed")
 					c.Abort()
 					return
 				}
-				if int(uid) == AdminID {
+				if int(uid) == w.AdminID {
 					ctx := context.Background()
 					us, err := storage.GetAllUsers(ctx)
 					if err != nil {
-						logrus.Warn(err)
+						logrus.WithError(err).Error("auth failed")
 						c.Abort()
 						return
 					}
@@ -194,11 +219,15 @@ func export(c *gin.Context) {
 					c.SecureJSON(http.StatusOK, userinfos)
 					return
 				}
+				logrus.Error("not admin")
+				c.Abort()
+				return
+
 			}
+			logrus.Error("not admin")
+			c.Abort()
+			return
 		}
 	}
-	errormessage := c.Query("error")
-	c.HTML(200, "login.html", gin.H{
-		"errorMessage": errormessage,
-	})
+	c.Redirect(200, "login.html")
 }

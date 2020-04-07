@@ -9,7 +9,7 @@ import (
 )
 
 // Index show index page. use templates/index.html
-func Index(c *gin.Context) {
+func (w Web) Index(c *gin.Context) {
 	if v, exists := c.Get("authed"); exists {
 		if authed, ok := v.(bool); ok && authed {
 			authData, _ := c.Cookie("auth_data_str")

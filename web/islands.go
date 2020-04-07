@@ -16,7 +16,7 @@ import (
 )
 
 //Islands public islands page
-func Islands(c *gin.Context) {
+func (w Web) Islands(c *gin.Context) {
 	if v, exists := c.Get("authed"); exists {
 		if authed, ok := v.(bool); ok && authed {
 			ctx := context.Background()
