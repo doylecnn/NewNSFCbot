@@ -331,9 +331,21 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 
 // cmdDTCWeekPriceAndPredict 当周菜价回看/预测
 func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	args := strings.TrimSpace(message.CommandArguments())
+	var prices []*storage.PriceHistory
+	var weekStartDate = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
+	var weekEndDate = weekStartDate.AddDate(0, 0, 7)
+	if len(args) != 0 {
+		prices, err = makeWeeklyPrice(strings.TrimSpace(message.CommandArguments()), weekStartDate, weekEndDate)
+		if err != nil {
+			return nil, Error{InnerError: err,
+				ReplyText: "更新一周报价时出错狸，请确认格式：\n[买入价] [上午价/下午价]……\n价格范围[1, 999]",
+			}
+		}
+	}
 	uid := message.From.ID
 	ctx := context.Background()
-	priceHistory, err := storage.GetWeekDTCPriceHistory(ctx, uid)
+	priceHistory, err := storage.GetWeeklyDTCPriceHistory(ctx, uid, weekStartDate, weekEndDate)
 	if err != nil {
 		if "Not found game: animal_crossing" == err.Error() {
 			return nil, Error{InnerError: err,
@@ -341,34 +353,35 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 			}
 		}
 		return nil, Error{InnerError: err,
-			ReplyText: "更新报价时出错狸",
+			ReplyText: "查找报价信息时出错狸",
 		}
 	}
-	/*	本周您的报价如下: 可以 点我 查询本周价格趋势
-	 *	| Sun | Mon | Tue | Wed | Thu | Fri | Sat |
-	 *	| - | -/105 | -/- | -/- | -/- | -/- | -/- |
-	 *	未录入星期日数据 无法生成查询数据 */
-	var weekPrices []string = []string{"\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-"}
-	for _, p := range priceHistory {
-		if p != nil {
-			var j = int(p.Date.Weekday())
-			if j == 0 {
-				weekPrices[j] = fmt.Sprintf("%d", p.Price)
-			} else if p.Date.Hour() < 12 {
-				weekPrices[j*2-1] = fmt.Sprintf("%d", p.Price)
-			} else {
-				weekPrices[j*2] = fmt.Sprintf("%d", p.Price)
+	if l := len(prices); prices != nil || l > 0 {
+		var i, j int = 0, 0
+		for ; i < l; i++ {
+			if j < len(priceHistory) {
+				if prices[i].Date.Weekday() == priceHistory[j].Date.Weekday() &&
+					((prices[i].Date.Hour() >= 8 && prices[i].Date.Hour() < 12 &&
+						priceHistory[j].Date.Hour() < 12) ||
+						(prices[i].Date.Hour() >= 12 && prices[i].Date.Hour() < 21 &&
+							priceHistory[j].Date.Hour() >= 12)) {
+					priceHistory[j].Delete(ctx)
+				} else {
+					priceHistory = append(priceHistory, nil)
+					copy(priceHistory[j+1:], priceHistory[j:])
+				}
+				priceHistory[j] = prices[i]
+				prices[i].Set(ctx, uid)
+				j++
 			}
 		}
 	}
-	var datePrice []string = make([]string, 7)
-	datePrice[0] = weekPrices[0]
-	for i := 1; i < 13; i += 2 {
-		datePrice[(i+1)/2] = fmt.Sprintf("%s/%s", weekPrices[i], weekPrices[i+1])
+	replyText, err := formatWeekPrices(priceHistory)
+	if err != nil {
+		return nil, Error{InnerError: err,
+			ReplyText: "格式化一周报价时出错",
+		}
 	}
-	var replyText string = fmt.Sprintf("本周您的报价如下: 可以 [点我](https://%s.appspot.com/ACNH_Turnip_Calculator/?filters=%s) 查询本周价格趋势\n"+
-		"\\| Sun \\| Mon \\| Tue \\| Wed \\| Thu \\| Fri \\| Sat \\|\n"+
-		"\\| %s \\|", _projectID, strings.Join(weekPrices, "&filters="), strings.Join(datePrice, " \\| "))
 	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
@@ -378,6 +391,79 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 			ParseMode: "MarkdownV2",
 		}},
 		nil
+}
+
+func makeWeeklyPrice(args string, startDate, endDate time.Time) (priceHistory []*storage.PriceHistory, err error) {
+	prices := strings.Split(strings.Trim(args, "/"), " ")
+	if len(prices) < 1 || len(prices) > 7 {
+		return nil, errors.New("wrong format")
+	}
+	if strings.Contains(prices[0], "/") {
+		return nil, errors.New("wrong format")
+	}
+	var intPrice []int
+	ip, err := strconv.Atoi(prices[0])
+	if err != nil {
+		return nil, errors.New("wrong format")
+	}
+	intPrice = append(intPrice, ip)
+	l1 := len(prices[1:])
+	for i, price := range prices[1:] {
+		ps := strings.Split(price, "/")
+		l2 := len(ps)
+		if l2 > 2 || (i != l1-1 && l2 == 1) {
+			return nil, errors.New("wrong format")
+		}
+		for _, p := range ps {
+			ip, err = strconv.Atoi(p)
+			if ip < 1 || ip > 999 || err != nil {
+				return nil, errors.New("wrong format")
+
+			}
+			intPrice = append(intPrice, ip)
+		}
+	}
+	for i := 0; i < len(intPrice); i++ {
+		if i == 0 {
+			priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i]})
+		} else {
+			if i%2 == 1 {
+				startDate = startDate.AddDate(0, 0, 1).Truncate(24 * time.Hour).Add(8 * time.Hour)
+			} else {
+				startDate = startDate.Add(4 * time.Hour)
+			}
+			priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i]})
+		}
+	}
+	return
+}
+
+/*	本周您的报价如下: 可以 点我 查询本周价格趋势
+ *	| Sun | Mon | Tue | Wed | Thu | Fri | Sat |
+ *	| - | -/105 | -/- | -/- | -/- | -/- | -/- |
+ *	未录入星期日数据 无法生成查询数据 */
+func formatWeekPrices(priceHistory []*storage.PriceHistory) (text string, err error) {
+	var weekPrices []string = []string{"\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-"}
+	for _, p := range priceHistory {
+		if p != nil {
+			var j = int(p.Date.Weekday())
+			if j == 0 {
+				weekPrices[j] = strconv.Itoa(p.Price)
+			} else if p.Date.Hour() < 12 {
+				weekPrices[j*2-1] = strconv.Itoa(p.Price)
+			} else {
+				weekPrices[j*2] = strconv.Itoa(p.Price)
+			}
+		}
+	}
+	var datePrice []string = make([]string, 7)
+	datePrice[0] = weekPrices[0]
+	for i := 1; i < 13; i += 2 {
+		datePrice[(i+1)/2] = fmt.Sprintf("%s/%s", weekPrices[i], weekPrices[i+1])
+	}
+	return fmt.Sprintf("本周您的报价如下: 可以 [点我](https://%s.appspot.com/ACNH_Turnip_Calculator/?filters=%s) 查询本周价格趋势\n"+
+		"\\| Sun \\| Mon \\| Tue \\| Wed \\| Thu \\| Fri \\| Sat \\|\n"+
+		"\\| %s \\|", _projectID, strings.Join(weekPrices, "&filters="), strings.Join(datePrice, " \\| ")), nil
 }
 
 func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {

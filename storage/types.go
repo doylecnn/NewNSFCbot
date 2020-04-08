@@ -347,14 +347,15 @@ func GetPriceHistory(ctx context.Context, uid int) (priceHistory []*PriceHistory
 			logrus.Warn(err)
 			return nil, err
 		}
+		price.Path = doc.Ref.Path
 		price.Date = price.Date.In(local)
 		priceHistory = append(priceHistory, price)
 	}
 	return priceHistory, nil
 }
 
-// GetWeekDTCPriceHistory 获得当前周自周日起的价格。周日是买入价
-func GetWeekDTCPriceHistory(ctx context.Context, uid int) (priceHistory []*PriceHistory, err error) {
+// GetWeeklyDTCPriceHistory 获得当前周自周日起的价格。周日是买入价
+func GetWeeklyDTCPriceHistory(ctx context.Context, uid int, startDate, endDate time.Time) (priceHistory []*PriceHistory, err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
 	if err != nil {
 		return nil, err
@@ -365,8 +366,7 @@ func GetWeekDTCPriceHistory(ctx context.Context, uid int) (priceHistory []*Price
 	if err != nil {
 		return nil, err
 	}
-	var weekStartDate = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
-	iter := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid)).Where("Date", ">=", weekStartDate).Documents(ctx)
+	iter := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid)).Where("Date", ">=", startDate).Where("Date", "<", endDate).OrderBy("Date", firestore.Asc).Documents(ctx)
 	for {
 		doc, err := iter.Next()
 		if err == iterator.Done {
@@ -380,6 +380,7 @@ func GetWeekDTCPriceHistory(ctx context.Context, uid int) (priceHistory []*Price
 			logrus.Warn(err)
 			return nil, err
 		}
+		price.Path = doc.Ref.Path
 		price.Date = price.Date.In(local)
 		priceHistory = append(priceHistory, price)
 	}
@@ -507,8 +508,46 @@ func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string, g
 
 // PriceHistory 大头菜 price history
 type PriceHistory struct {
+	Path  string    `firestore:"-"`
 	Date  time.Time `firestore:"Date"`
 	Price int       `firestore:"Price"`
+}
+
+// Set price history
+func (p PriceHistory) Set(ctx context.Context, uid int) (err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return
+	}
+	defer client.Close()
+
+	p.Path = fmt.Sprintf("users/%d/games/animal_crossing/price_history/%d", uid, p.Date.Unix())
+	_, err = client.Doc(p.Path).Set(ctx, p)
+	return
+}
+
+// Update price history
+func (p PriceHistory) Update(ctx context.Context) (err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return
+	}
+	defer client.Close()
+
+	_, err = client.Doc(p.Path).Set(ctx, p)
+	return
+}
+
+// Delete price history
+func (p PriceHistory) Delete(ctx context.Context) (err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return
+	}
+	defer client.Close()
+
+	_, err = client.Doc(p.Path).Delete(ctx)
+	return
 }
 
 func (i Island) String() string {
