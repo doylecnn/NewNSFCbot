@@ -32,18 +32,18 @@ func cmdImportData(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 		if err != nil {
 			logrus.Warnf("user name:%s, id:%s, fc:%s, err:%v", name, tgidstr, fcstr, err)
 		}
-		u := storage.User{ID: int(tgid), Name: name, NSAccounts: []storage.NSAccount{storage.NSAccount{Name: name, FC: storage.FriendCode(fc)}}}
+		u := storage.User{ID: int(tgid), Name: name, NSAccounts: []storage.NSAccount{{Name: name, FC: storage.FriendCode(fc)}}}
 		_, err = storage.GetUser(ctx, u.ID, 0)
 		if err != nil {
 			if !strings.HasPrefix(err.Error(), "Not found userID:") {
 				continue
 			}
-			u.Create(ctx)
+			u.Set(ctx)
 		} else {
 			u.Update(ctx)
 		}
 	}
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -117,7 +117,7 @@ func cmdUpdateGroupInfo(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 		}
 	}
 
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:              message.Chat.ID,
 			ReplyToMessageID:    message.MessageID,

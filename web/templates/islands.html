@@ -75,6 +75,7 @@
                     {{else}}
                         <span class="name">南半球</span>
                     {{end}}
+                    <spane class="name">时区：{{$u.Island.Timezone}}</spane>
                 </li>
                 <li class="airportstatus">机场状态：
                     {{if $u.Island.AirportIsOpen}}
@@ -94,7 +95,7 @@
                 {{end}}
                 <span class="name">{{$u.Island.LastPrice.Price}}铃钱/颗</span><span class="name" style="font-size: small;">({{$u.Island.LastPrice.Date}})</span></li>
                 <li>
-                    <span>水果/简要说明:</span><ul>{{range $u.Island.Fruits}}<li><span class="name">{{.}}</span></li>{{end}}</ul>
+                    <span>基本信息:</span><span>{.island.BaseInfo}</span>
                 </li>
         </div>
     </div>

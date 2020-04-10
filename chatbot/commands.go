@@ -54,7 +54,7 @@ func cmdAddFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 			u = &storage.User{ID: message.From.ID, Name: username, NSAccounts: accounts}
 		}
 		u.NameInsensitive = strings.ToLower(u.Name)
-		if err = u.Create(ctx); err != nil {
+		if err = u.Set(ctx); err != nil {
 			return nil, Error{InnerError: err,
 				ReplyText: fmt.Sprintf("创建用户信息时出错: %v", err),
 			}
@@ -87,7 +87,7 @@ func cmdAddFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 		}
 	}
 
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -123,7 +123,7 @@ func cmdDelFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	for _, a := range u.NSAccounts {
 		if a.FC == fc {
 			if err = u.DeleteNSAccount(ctx, a); err == nil {
-				return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+				return []*tgbotapi.MessageConfig{{
 						BaseChat: tgbotapi.BaseChat{
 							ChatID:              message.Chat.ID,
 							ReplyToMessageID:    message.MessageID,
@@ -136,7 +136,7 @@ func cmdDelFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 			}
 		}
 	}
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -152,9 +152,11 @@ func cmdDeleteMe(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 			ReplyText: fmt.Sprintf("删除信息时出错: %v", err),
 		}
 	} else if u != nil {
-		u.Delete(ctx)
+		if err = u.Delete(ctx); err != nil {
+			logrus.WithError(err).Error()
+		}
 	}
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -173,7 +175,7 @@ func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig,
 	}
 	if err != nil && strings.HasPrefix(err.Error(), "Not found userID:") {
 		logrus.Debug("没有找到用户记录")
-		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -185,7 +187,7 @@ func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig,
 	for _, account := range u.NSAccounts {
 		astr = append(astr, account.String())
 	}
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -231,7 +233,7 @@ func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 
 	if len(us) == 0 {
 		logrus.Info("users count == 0")
-		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -244,7 +246,7 @@ func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 	for _, account := range u.NSAccounts {
 		astr = append(astr, account.String())
 	}
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -306,7 +308,7 @@ func inlineQueryMyIsland(query *tgbotapi.InlineQuery) (*tgbotapi.InlineConfig, e
 }
 
 func cmdWebLogin(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,

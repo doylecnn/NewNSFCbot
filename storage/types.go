@@ -2,14 +2,11 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
-	"time"
 
 	"cloud.google.com/go/firestore"
+	fuzzy "github.com/doylecnn/go-fuzzywuzzy"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/api/iterator"
 	"google.golang.org/grpc/codes"
@@ -23,6 +20,7 @@ var (
 
 // User Telegram User
 type User struct {
+	Path            string      `firestore:"-"`
 	ID              int         `firestore:"id"`
 	Name            string      `firestore:"name"`
 	NameInsensitive string      `firestore:"name_insensitive"`
@@ -31,16 +29,15 @@ type User struct {
 	GroupIDs        []int64     `firestore:"groupids,omitempty"`
 }
 
-// Create new user
-func (u User) Create(ctx context.Context) (err error) {
+// Set new user
+func (u User) Set(ctx context.Context) (err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
 
-	userID := fmt.Sprintf("%d", u.ID)
-	_, err = client.Collection("users").Doc(userID).Set(ctx, u)
+	_, err = client.Collection("users").Doc(fmt.Sprintf("%d", u.ID)).Set(ctx, u)
 	if err != nil {
 		logrus.Warnf("Failed adding user: %v", err)
 	}
@@ -55,7 +52,7 @@ func (u User) Update(ctx context.Context) (err error) {
 	}
 	defer client.Close()
 
-	_, err = client.Doc(fmt.Sprintf("users/%d", u.ID)).Set(ctx, u)
+	_, err = client.Doc(u.Path).Set(ctx, u)
 	if err != nil {
 		logrus.Warnf("Failed update user: %v", err)
 	}
@@ -70,17 +67,21 @@ func (u User) Delete(ctx context.Context) (err error) {
 	}
 	defer client.Close()
 
-	docRef := client.Doc(fmt.Sprintf("users/%d", u.ID))
-	games := docRef.Collection("games")
-	priceHistory := games.Doc("animal_crossing").Collection("price_history")
-	if err = deleteCollection(ctx, client, priceHistory, 10); err != nil {
-		logrus.Warnf("Failed delete collection price_history: %v", err)
-	}
-	if err = deleteCollection(ctx, client, games, 10); err != nil {
-		logrus.Warnf("Failed delete collection games: %v", err)
-	}
-	if _, err = docRef.Delete(ctx); err != nil {
-		logrus.Warnf("Failed delete doc user: %v", err)
+	docRef := client.Doc(u.Path)
+	if docRef != nil {
+		games := docRef.Collection("games")
+		if games != nil {
+			priceHistory := games.Doc("animal_crossing").Collection("price_history")
+			if err = deleteCollection(ctx, client, priceHistory, 10); err != nil {
+				logrus.Warnf("Failed delete collection price_history: %v", err)
+			}
+			if err = deleteCollection(ctx, client, games, 10); err != nil {
+				logrus.Warnf("Failed delete collection games: %v", err)
+			}
+		}
+		if _, err = docRef.Delete(ctx); err != nil {
+			logrus.Warnf("Failed delete doc user: %v", err)
+		}
 	}
 	return
 }
@@ -93,7 +94,7 @@ func (u User) DeleteNSAccount(ctx context.Context, account NSAccount) (err error
 	}
 	defer client.Close()
 
-	co := client.Doc(fmt.Sprintf("users/%d", u.ID))
+	co := client.Doc(u.Path)
 	_, err = co.Update(ctx, []firestore.Update{
 		{Path: "ns_accounts", Value: firestore.ArrayRemove(account)},
 	})
@@ -126,6 +127,7 @@ func GetUser(ctx context.Context, userID int, groupID int64) (user *User, err er
 	}
 	for _, gid := range user.GroupIDs {
 		if gid == groupID {
+			user.Path = fmt.Sprintf("users/%d", user.ID)
 			return user, nil
 		}
 	}
@@ -155,6 +157,7 @@ func GetAllUsers(ctx context.Context) (users []*User, err error) {
 			return nil, err
 		}
 		if u != nil {
+			u.Path = fmt.Sprintf("users/%d", u.ID)
 			users = append(users, u)
 		}
 	}
@@ -181,10 +184,11 @@ func GetUsersByName(ctx context.Context, username string, groupID int64) (users 
 		}
 		u := &User{}
 		if err = doc.DataTo(u); err != nil {
-			logrus.Warn(err)
-			return nil, err
+			logrus.WithError(err).Warn("GetUsersByName")
+			continue
 		}
 		if u != nil {
+			u.Path = fmt.Sprintf("users/%d", u.ID)
 			users = append(users, u)
 		}
 	}
@@ -212,17 +216,16 @@ func GetUsersByNSAccountName(ctx context.Context, username string, groupID int64
 		if userDocSnap.Exists() {
 			u := &User{}
 			if err = userDocSnap.DataTo(u); err != nil {
-				logrus.Warn(err)
-				return nil, err
+				logrus.WithError(err).Warn("GetUsersByNSAccountName")
+				continue
 			}
 			if u != nil {
 				for _, a := range u.NSAccounts {
 					if a.NameInsensitive == strings.ToLower(username) {
+						u.Path = fmt.Sprintf("users/%d", u.ID)
 						users = append(users, u)
-						break
 					}
 				}
-				break
 			}
 		}
 	}
@@ -265,150 +268,11 @@ func (u *User) GetAnimalCrossingIsland(ctx context.Context) (island *Island, err
 		return
 	}
 
-	client, err := firestore.NewClient(ctx, ProjectID)
+	island, err = GetAnimalCrossingIslandByUserID(ctx, u.ID)
 	if err != nil {
-		return
-	}
-	defer client.Close()
-	var islandDocPath = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
-	dsnap, err := client.Doc(islandDocPath).Get(ctx)
-	if err != nil && status.Code(err) != codes.NotFound {
 		logrus.Warnf("failed when get island: %v", err)
 		return nil, err
 	}
-	if !dsnap.Exists() || (err != nil && status.Code(err) == codes.NotFound) {
-		return nil, fmt.Errorf("Not found island of userID: %d", u.ID)
-	}
-	island = &Island{}
-	if err = dsnap.DataTo(island); err != nil {
-		return
-	}
-	island.Path = islandDocPath
-	local, err := time.LoadLocation("Asia/Hong_Kong") //服务器设置的时区
-	if err != nil {
-		return
-	}
-	island.LastPrice.Date = island.LastPrice.Date.In(local)
-	return
-}
-
-// UpdateDTCPrice 更新 大头菜 菜价
-func UpdateDTCPrice(ctx context.Context, uid, price int) error {
-	client, err := firestore.NewClient(ctx, ProjectID)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	dsnap, err := client.Doc(fmt.Sprintf("users/%d/games/animal_crossing", uid)).Get(ctx)
-	if err != nil && status.Code(err) != codes.NotFound {
-		logrus.Warnf("failed when get island: %v", err)
-		return err
-	}
-	if !dsnap.Exists() || (err != nil && status.Code(err) == codes.NotFound) {
-		return errors.New("Not found game: animal_crossing")
-	}
-	island := Island{}
-	err = dsnap.DataTo(&island)
-	if err != nil {
-		return err
-	}
-	island.LastPrice.Price = price
-	island.LastPrice.Date = time.Now()
-	client.Doc(fmt.Sprintf("users/%d/games/animal_crossing", uid)).Set(ctx, island)
-	var now = time.Now()
-	cref := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid))
-	_, err = cref.Doc(fmt.Sprintf("%d", now.Unix())).Set(ctx, island.LastPrice)
-	return err
-}
-
-// GetPriceHistory get price history
-func GetPriceHistory(ctx context.Context, uid int) (priceHistory []*PriceHistory, err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
-	if err != nil {
-		return nil, err
-	}
-	defer client.Close()
-
-	local, err := time.LoadLocation("Asia/Hong_Kong") //服务器设置的时区
-	if err != nil {
-		return nil, err
-	}
-	iter := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid)).Documents(ctx)
-	for {
-		doc, err := iter.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		var price *PriceHistory = &PriceHistory{}
-		if err = doc.DataTo(price); err != nil {
-			logrus.Warn(err)
-			return nil, err
-		}
-		price.Path = doc.Ref.Path
-		price.Date = price.Date.In(local)
-		priceHistory = append(priceHistory, price)
-	}
-	return priceHistory, nil
-}
-
-// GetWeeklyDTCPriceHistory 获得当前周自周日起的价格。周日是买入价
-func GetWeeklyDTCPriceHistory(ctx context.Context, uid int, startDate, endDate time.Time) (priceHistory []*PriceHistory, err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
-	if err != nil {
-		return nil, err
-	}
-	defer client.Close()
-
-	local, err := time.LoadLocation("Asia/Hong_Kong") //服务器设置的时区
-	if err != nil {
-		return nil, err
-	}
-	iter := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid)).Where("Date", ">=", startDate).Where("Date", "<", endDate).OrderBy("Date", firestore.Asc).Documents(ctx)
-	for {
-		doc, err := iter.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		var price *PriceHistory = &PriceHistory{}
-		if err = doc.DataTo(price); err != nil {
-			logrus.Warn(err)
-			return nil, err
-		}
-		price.Path = doc.Ref.Path
-		price.Date = price.Date.In(local)
-		priceHistory = append(priceHistory, price)
-	}
-	return priceHistory, nil
-}
-
-// Island in AnimalCrossing
-type Island struct {
-	Path             string       `firestore:"-"`
-	Name             string       `firestore:"name"`
-	NameInsensitive  string       `firestore:"name_insensitive,omitempty"`
-	Hemisphere       int          `firestore:"hemisphere"`
-	AirportIsOpen    bool         `firestore:"AirportIsOpen"`
-	Info             string       `firestore:"Info"`
-	Fruits           []string     `firestore:"Fruits"`
-	LastPrice        PriceHistory `firestore:"LastPrice"`
-	Owner            string       `firestore:"owner,omitempty"`
-	OwnerInsensitive string       `firestore:"owner_insensitive,omitempty"`
-}
-
-// Update island info
-func (i Island) Update(ctx context.Context) (err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
-	if err != nil {
-		return
-	}
-	defer client.Close()
-	_, err = client.Doc(i.Path).Set(ctx, i)
 	return
 }
 
@@ -437,7 +301,11 @@ func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupI
 		}
 		if islandDoc, err := doc.Ref.Collection("games").Doc("animal_crossing").Get(ctx); err == nil && islandDoc.Exists() {
 			var island Island
-			islandDoc.DataTo(&island)
+			if err = islandDoc.DataTo(&island); err != nil {
+				logrus.WithError(err).Error("error when DataTo island")
+				continue
+			}
+
 			name = strings.ToLower(name)
 			if strings.HasSuffix(name, "岛") {
 				r := []rune(name)
@@ -450,12 +318,18 @@ func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupI
 				u := &User{}
 				if err = doc.DataTo(u); err != nil {
 					logrus.WithError(err).Error("error when DataTo user")
-					return nil, err
+					continue
 				}
 				if u != nil {
+					island.Path = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
+					if island.Timezone == 0 {
+						island.Timezone = Timezone(8 * 3600)
+						island.Update(ctx)
+					}
+					island.LastPrice.Timezone = island.Timezone
 					u.Island = &island
+					u.Path = fmt.Sprintf("users/%d", u.ID)
 					users = append(users, u)
-					break
 				}
 			}
 		}
@@ -488,17 +362,26 @@ func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string, g
 		}
 		if islandDoc, err := doc.Ref.Collection("games").Doc("animal_crossing").Get(ctx); err == nil && islandDoc.Exists() {
 			var island Island
-			islandDoc.DataTo(&island)
+			if err = islandDoc.DataTo(&island); err != nil {
+				logrus.WithError(err).Error("error when DataTo island")
+				continue
+			}
 			if island.OwnerInsensitive == strings.ToLower(name) {
 				u := &User{}
 				if err = doc.DataTo(u); err != nil {
 					logrus.WithError(err).Error("error when DataTo user")
-					return nil, err
+					continue
 				}
 				if u != nil {
+					island.Path = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
+					if len(island.Timezone.String()) == 0 {
+						island.Timezone = Timezone(8 * 3600)
+						island.Update(ctx)
+					}
+					island.LastPrice.Timezone = island.Timezone
 					u.Island = &island
+					u.Path = fmt.Sprintf("users/%d", u.ID)
 					users = append(users, u)
-					break
 				}
 			}
 		}
@@ -506,117 +389,62 @@ func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string, g
 	return users, nil
 }
 
-// PriceHistory 大头菜 price history
-type PriceHistory struct {
-	Path  string    `firestore:"-"`
-	Date  time.Time `firestore:"Date"`
-	Price int       `firestore:"Price"`
-}
-
-// Set price history
-func (p PriceHistory) Set(ctx context.Context, uid int) (err error) {
+// GetUsersByAnimalCrossingIslandInfo get users by island open info
+func GetUsersByAnimalCrossingIslandInfo(ctx context.Context, info string, groupID int64) (users []*User, err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
 	if err != nil {
-		return
+		return nil, err
 	}
 	defer client.Close()
 
-	p.Path = fmt.Sprintf("users/%d/games/animal_crossing/price_history/%d", uid, p.Date.Unix())
-	_, err = client.Doc(p.Path).Set(ctx, p)
-	return
-}
-
-// Update price history
-func (p PriceHistory) Update(ctx context.Context) (err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
-	if err != nil {
-		return
-	}
-	defer client.Close()
-
-	_, err = client.Doc(p.Path).Set(ctx, p)
-	return
-}
-
-// Delete price history
-func (p PriceHistory) Delete(ctx context.Context) (err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
-	if err != nil {
-		return
-	}
-	defer client.Close()
-
-	_, err = client.Doc(p.Path).Delete(ctx)
-	return
-}
-
-func (i Island) String() string {
-	var airportstatus string
-	if i.AirportIsOpen {
-		airportstatus = "现正开放"
-	} else {
-		airportstatus = "现已关闭"
-	}
-	var hemisphere string
-	if i.Hemisphere == 0 {
-		hemisphere = "北"
-	} else {
-		hemisphere = "南"
-	}
-	if !strings.HasSuffix(i.Name, "岛") {
-		i.Name += "岛"
-	}
-	var text string = fmt.Sprintf("位于%s半球的岛屿：%s, 岛民代表：%s。 %s\n岛屿有水果：%s", hemisphere, i.Name, i.Owner, airportstatus, strings.Join(i.Fruits, ", "))
-	if i.AirportIsOpen && len(i.Info) > 0 {
-		text += "\n\n本回开放特色信息：" + i.Info
-	}
-	return text
-}
-
-// NSAccount Nintendo Switch account
-type NSAccount struct {
-	Name            string     `firestore:"name,omitempty"`
-	NameInsensitive string     `firestore:"name_insensitive,omitempty"`
-	FC              FriendCode `firestore:"friend_code,omitempty"`
-}
-
-// ParseAccountsFromString Parse FriendCode From String
-func ParseAccountsFromString(msg, defaultname string) (accounts []NSAccount, err error) {
-	var accountRegexp = regexp.MustCompile("^(?:(\\w+)\\s*:\\s*)?(?:[sS][wW]-?)?((?:\\d{12})|(?:\\d{4}-\\d{4}-\\d{4}))$")
-	msg = strings.TrimSpace(msg) + ";"
-	var substrs = strings.Split(msg, ";")
-	for _, s := range substrs {
-		submatchs := accountRegexp.FindAllStringSubmatch(strings.TrimSpace(s), 1)
-		for _, m := range submatchs {
-			code, err := strconv.ParseInt(strings.Replace(m[2], "-", "", -1), 10, 64)
-			if err != nil {
-				return accounts, fmt.Errorf("error: %v. wrong friend code format:%s", err, m[0])
+	iter := client.Collection("users").Where("groupids", "array-contains", groupID).Documents(ctx)
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				logrus.Debug("not found user in group")
 			}
-			var name string
-			if len(m[1]) > 0 {
-				name = m[1]
-			} else {
-				name = defaultname
+			return nil, err
+		}
+		if !doc.Exists() {
+			continue
+		}
+		if islandDoc, err := doc.Ref.Collection("games").Doc("animal_crossing").Get(ctx); err == nil && islandDoc.Exists() {
+			var island Island
+			if err = islandDoc.DataTo(&island); err != nil {
+				logrus.WithError(err).Error("error when DataTo island")
+				continue
 			}
-			accounts = append(accounts, NSAccount{name, strings.ToLower(name), FriendCode(code)})
+			if len(island.BaseInfo) == 0 && len(island.Fruits) > 0 {
+				island.BaseInfo = strings.Join(island.Fruits, ", ")
+				island.Fruits = nil
+			}
+			if len(island.Info) > 0 && fuzzy.PartialRatio(island.Info, info) > 80 ||
+				len(island.BaseInfo) > 0 && fuzzy.PartialRatio(island.BaseInfo, info) > 80 {
+				u := &User{}
+				if err = doc.DataTo(u); err != nil {
+					logrus.WithError(err).Error("error when DataTo user")
+					u = nil
+					continue
+				}
+				if u != nil {
+					island.Path = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
+					if len(island.Timezone.String()) == 0 {
+						island.Timezone = Timezone(8 * 3600)
+						island.Update(ctx)
+					}
+					island.LastPrice.Timezone = island.Timezone
+					u.Island = &island
+					u.Path = fmt.Sprintf("users/%d", u.ID)
+					users = append(users, u)
+				}
+			}
 		}
 	}
-	return accounts, nil
-}
-
-func (a NSAccount) String() string {
-	if len(a.Name) == 0 {
-		return a.FC.String()
-	}
-	return a.Name + ": " + a.FC.String()
-}
-
-// FriendCode is Nintendo Switch Friend Code
-type FriendCode int64
-
-func (fc FriendCode) String() string {
-	c := int64(fc)
-	return fmt.Sprintf("SW-%04d-%04d-%04d", c/100000000%10000, c/10000%10000, c%10000)
+	return users, nil
 }
 
 // GetGroupUsers get group users
@@ -641,6 +469,7 @@ func GetGroupUsers(ctx context.Context, groupID int64) (users []*User, err error
 			return nil, err
 		}
 		if u != nil {
+			u.Path = fmt.Sprintf("users/%d", u.ID)
 			users = append(users, u)
 		}
 	}
@@ -683,8 +512,8 @@ func GetAllGroups(ctx context.Context) (groups []*Group, err error) {
 	return groups, nil
 }
 
-// Create group info
-func (g Group) Create(ctx context.Context) (err error) {
+// Set group info
+func (g Group) Set(ctx context.Context) (err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
 	if err != nil {
 		return err
@@ -740,6 +569,9 @@ func GetGroup(ctx context.Context, groupID int64) (group Group, err error) {
 
 func deleteCollection(ctx context.Context, client *firestore.Client,
 	ref *firestore.CollectionRef, batchSize int) error {
+	if ref == nil {
+		return nil
+	}
 	for {
 		// Get a batch of documents
 		iter := ref.Limit(batchSize).Documents(ctx)

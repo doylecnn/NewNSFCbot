@@ -74,7 +74,7 @@ func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 			logrus.Errorf("GetGroupError:%v", err)
 		} else if err != nil && strings.HasPrefix(err.Error(), "Not found group:") {
 			g = storage.Group{ID: message.Chat.ID, Type: message.Chat.Type, Title: message.Chat.Title}
-			g.Create(ctx)
+			g.Set(ctx)
 		} else {
 			if g.Title != message.Chat.Title || g.Type != message.Chat.Type {
 				g.Type = message.Chat.Type
@@ -124,7 +124,7 @@ func cmdSuggest(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 	})
 	mostSuggestCommand := cmds[scoreCmdIdx[fuzzyScores[0]]]
 
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,

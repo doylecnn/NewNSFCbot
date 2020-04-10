@@ -46,14 +46,15 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 /myfc 显示自己的所有fc
 /sfc 搜索你回复或at 的人的fc
 /fc 与sfc 相同
-/deleteme 删除我的所有登记信息
 /fclist 列出本群所有人的fc 列表
 /whois name 查找NSAccount/Island是 name 的用户
-/addisland 添加你的动森岛：/addisland 岛名 N/S 岛主 其它信息
+/addisland 添加你的动森岛屿：/addisland 岛名 N/S 岛主 岛屿简介等信息
+/islandinfo 更新你的动森岛屿基本信息和简介：/updateBaseInfo 简介
+/settimezone 设置岛屿所在的时区，[-12:00, +12:00]
 /sac 搜索你回复或at 的人的AnimalCrossing 信息
 /myisland 显示自己的岛信息
-/open_island 开放自己的岛 命令后可以附上岛屿今日特色内容 相同指令 /open_airport
-/close_island 关闭自己的岛 相同指令 /close_airport
+/open 开放自己的岛 命令后可以附上岛屿今日特色内容
+/close 关闭自己的岛
 /dtcj 更新大头菜价格, 不带参数时，和 /gj 相同
 /weekprice 当周菜价回看/预测
 /gj 大头菜最新价格，只显示同群中价格从高到低前10
@@ -67,14 +68,23 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 	for scanner.Scan() {
 		sep := strings.SplitN(scanner.Text(), " ", 2)
 		botCommands = append(botCommands,
-			BotCommand{Command: strings.TrimSpace(sep[0]),
+			BotCommand{Command: strings.TrimSpace(sep[0])[1:],
 				Description: strings.TrimSpace(sep[1]),
 			})
+	}
+	if cmds, err := getMyCommands(); err != nil {
+		logrus.WithError(err).Error("getMyCommands")
+	} else if err == nil && len(cmds) != len(botCommands) {
+		if resp, err := setMyCommands(botCommands); err != nil {
+			logrus.WithError(err).Warn("setMyCommands")
+		} else {
+			logrus.WithFields(logrus.Fields{"result": resp.Result}).Info("setMyCommands")
+		}
 	}
 
 	router := NewRouter()
 	router.HandleFunc("help", func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
-		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -83,25 +93,23 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 			nil
 	})
 
-	if _, err = setMyCommands(botCommands); err != nil {
-		logrus.Warn(err)
-	}
 	router.HandleFunc("addfc", cmdAddFC)
 	router.HandleFunc("delfc", cmdDelFC)
 	router.HandleFunc("myfc", cmdMyFC)
 	router.HandleFunc("sfc", cmdSearchFC)
 	router.HandleFunc("fc", cmdSearchFC)
 	router.HandleFunc("fclist", cmdListFriendCodes)
-	router.HandleFunc("deleteme", cmdDeleteMe)
+	//router.HandleFunc("deleteme", cmdDeleteMe)
 
 	// Animal Crossing: New Horizons
 	router.HandleFunc("islands", cmdListIslands)
 	router.HandleFunc("addisland", cmdAddMyIsland)
+	router.HandleFunc("islandinfo", cmdUpdateIslandBaseInfo)
+	router.HandleFunc("updateBaseInfo", cmdUpdateIslandBaseInfo)
+	router.HandleFunc("settimezone", cmdSetIslandTimezone)
 	router.HandleFunc("myisland", cmdMyIsland)
-	router.HandleFunc("open_airport", cmdOpenIsland)
-	router.HandleFunc("open_island", cmdOpenIsland)
-	router.HandleFunc("close_airport", cmdCloseIsland)
-	router.HandleFunc("close_island", cmdCloseIsland)
+	router.HandleFunc("open", cmdOpenIsland)
+	router.HandleFunc("close", cmdCloseIsland)
 	router.HandleFunc("dtcj", cmdDTCPriceUpdate)
 	router.HandleFunc("weekprice", cmdDTCWeekPriceAndPredict)
 	router.HandleFunc("gj", cmdDTCMaxPriceInGroup)
@@ -334,7 +342,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				og, err := storage.GetGroup(ctx, g.ID)
 				if err != nil {
 					if strings.HasPrefix(err.Error(), "Not found group:") {
-						g.Create(ctx)
+						g.Set(ctx)
 					} else {
 						logrus.WithError(err).Error("get group failed")
 					}

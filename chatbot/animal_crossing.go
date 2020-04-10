@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,7 +28,7 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	if len(args) < 3 {
 		return nil, Error{InnerError: err,
 			ReplyText: `/addisland 详细语法：
-/addisland 命令至少需要3个参数，第一个是岛的名字，第二个是南北半球，第三个是岛主，所有参数使用空格分割
+/addisland 命令至少需要3个参数，第一个是岛的名字，第二个是南北半球，第三个是岛主，其它内容将作为岛屿的基本信息。所有参数使用空格分割
 南北半球请使用 N 或 S 表示：N 表示北半球，S 表示南半球`,
 		}
 	}
@@ -43,7 +44,7 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		}
 	}
 	owner := strings.TrimSpace(args[2])
-	fruits := args[3:]
+	baseinfo := strings.Join(args[3:], ", ")
 
 	var FCNotExists bool = false
 	var island *storage.Island
@@ -54,70 +55,86 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	ctx := context.Background()
 	u, err := storage.GetUser(ctx, message.From.ID, groupID)
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "Not found userID:") {
-			var username = message.From.UserName
-			if len(username) == 0 {
-				username = message.From.FirstName + " " + message.From.LastName
-			}
-			if groupID != 0 {
-				u = &storage.User{
-					ID:              message.From.ID,
-					Name:            username,
-					NameInsensitive: strings.ToLower(username),
-					GroupIDs:        []int64{groupID},
-				}
-			} else {
-				u = &storage.User{
-					ID:              message.From.ID,
-					Name:            username,
-					NameInsensitive: strings.ToLower(username),
-				}
-			}
-			FCNotExists = true
-			if err = u.Create(ctx); err != nil {
-				return nil, Error{InnerError: err,
-					ReplyText: fmt.Sprintf("添加岛屿时失败狸。error info: %v", err),
-				}
+		if !strings.HasPrefix(err.Error(), "Not found userID:") {
+			return nil, Error{InnerError: err,
+				ReplyText: fmt.Sprintf("添加岛屿时失败狸。error info: %v", err),
 			}
 		}
-		return nil, Error{InnerError: err,
-			ReplyText: fmt.Sprintf("添加岛屿时失败狸。error info: %v", err),
+		var username = message.From.UserName
+		if len(username) == 0 {
+			username = message.From.FirstName + " " + message.From.LastName
+		}
+		if groupID != 0 {
+			u = &storage.User{
+				ID:              message.From.ID,
+				Name:            username,
+				NameInsensitive: strings.ToLower(username),
+				GroupIDs:        []int64{groupID},
+			}
+		} else {
+			u = &storage.User{
+				ID:              message.From.ID,
+				Name:            username,
+				NameInsensitive: strings.ToLower(username),
+			}
+		}
+		FCNotExists = true
+		if err = u.Set(ctx); err != nil {
+			return nil, Error{InnerError: err,
+				ReplyText: fmt.Sprintf("添加岛屿时失败狸。error info: %v", err),
+			}
 		}
 	}
-	if island, err = u.GetAnimalCrossingIsland(ctx); err != nil && !strings.HasPrefix(err.Error(), "Not found island of userID:") {
-		return nil, Error{InnerError: err,
-			ReplyText: fmt.Sprintf("添加岛屿时失败狸。error info: %v", err),
-		}
-	} else if err == nil && island != nil {
-		island, err = u.GetAnimalCrossingIsland(ctx)
-		if err != nil {
-			return
-		}
-		island.Name = islandName
-		island.NameInsensitive = strings.ToLower(islandName)
-		island.Hemisphere = hemisphere
-		island.Fruits = fruits
-		island.Owner = owner
-		island.OwnerInsensitive = strings.ToLower(owner)
-		if err = island.Update(ctx); err != nil {
-			return nil, Error{InnerError: err,
-				ReplyText: fmt.Sprintf("更新岛屿信息时出错狸。error info: %v", err),
-			}
-		}
-	} else {
+	if FCNotExists {
 		island = &storage.Island{
 			Path:             fmt.Sprintf("users/%d/games/animal_crossing", u.ID),
 			Name:             islandName,
 			NameInsensitive:  strings.ToLower(islandName),
 			Hemisphere:       hemisphere,
 			AirportIsOpen:    false,
+			BaseInfo:         baseinfo,
 			Info:             "",
-			Fruits:           fruits,
+			Timezone:         storage.Timezone(8 * 3600),
 			Owner:            owner,
 			OwnerInsensitive: strings.ToLower(owner)}
 		if err = island.Update(ctx); err != nil {
 			return nil, Error{InnerError: err,
 				ReplyText: fmt.Sprintf("记录岛屿时出错狸。error info: %v", err),
+			}
+		}
+	} else {
+		if island, err = u.GetAnimalCrossingIsland(ctx); err != nil && !strings.HasPrefix(err.Error(), "Not found island of userID:") {
+			return nil, Error{InnerError: err,
+				ReplyText: fmt.Sprintf("添加岛屿时失败狸。error info: %v", err),
+			}
+		} else if err == nil && island != nil {
+			island.Name = islandName
+			island.NameInsensitive = strings.ToLower(islandName)
+			island.Hemisphere = hemisphere
+			island.BaseInfo = baseinfo
+			island.Owner = owner
+			island.OwnerInsensitive = strings.ToLower(owner)
+			if err = island.Update(ctx); err != nil {
+				return nil, Error{InnerError: err,
+					ReplyText: fmt.Sprintf("更新岛屿信息时出错狸。error info: %v", err),
+				}
+			}
+		} else {
+			island = &storage.Island{
+				Path:             fmt.Sprintf("users/%d/games/animal_crossing", u.ID),
+				Name:             islandName,
+				NameInsensitive:  strings.ToLower(islandName),
+				Hemisphere:       hemisphere,
+				AirportIsOpen:    false,
+				BaseInfo:         baseinfo,
+				Info:             "",
+				Timezone:         storage.Timezone(8 * 3600),
+				Owner:            owner,
+				OwnerInsensitive: strings.ToLower(owner)}
+			if err = island.Update(ctx); err != nil {
+				return nil, Error{InnerError: err,
+					ReplyText: fmt.Sprintf("记录岛屿时出错狸。error info: %v", err),
+				}
 			}
 		}
 	}
@@ -128,9 +145,9 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 
 	var rstText = fmt.Sprintf("完成狸。添加了岛屿 %s 的信息狸。", islandName)
 	if FCNotExists {
-		rstText += "但您还没有登记您的FC。\n请使用/addfc 命令登记，方便群友通过FC 添加您为好友狸。"
+		rstText += "但您还没有登记您的FC。\n将来可使用/addfc 命令登记，方便群友通过FC 添加您为好友狸。"
 	}
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -139,31 +156,20 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		nil
 }
 
-func cmdMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdUpdateIslandBaseInfo(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	args := strings.TrimSpace(message.CommandArguments())
+	if len(args) == 0 {
+		return
+	}
 	ctx := context.Background()
-	u, err := storage.GetUser(ctx, message.From.ID, 0)
-	if err != nil && !strings.HasPrefix(err.Error(), "Not found userID:") {
-		return nil, Error{InnerError: err,
-			ReplyText: "查询记录时出错了狸",
-		}
-	}
-	if err != nil && strings.HasPrefix(err.Error(), "Not found userID:") {
-		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
-				BaseChat: tgbotapi.BaseChat{
-					ChatID:              message.Chat.ID,
-					ReplyToMessageID:    message.MessageID,
-					DisableNotification: true},
-				Text: "没有找到您的记录，请先使用 addisland 命令添加岛屿记录狸"}},
-			nil
-	}
-	island, err := u.GetAnimalCrossingIsland(ctx)
+	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
 	if err != nil {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询记录时出错了狸",
 		}
 	}
 	if island == nil {
-		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -171,7 +177,94 @@ func cmdMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 				Text: "没有找到您的记录，请先使用 addisland 命令添加岛屿记录"}},
 			nil
 	}
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	if island.BaseInfo != args {
+		island.BaseInfo = args
+		if err = island.Update(ctx); err != nil {
+			return nil, Error{InnerError: err,
+				ReplyText: "更新岛屿信息是时出错了狸",
+			}
+		}
+	}
+	return []*tgbotapi.MessageConfig{{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: true},
+			Text: "更新了岛屿信息：\n" + island.BaseInfo}},
+		nil
+}
+
+func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	args := strings.TrimSpace(message.CommandArguments())
+	if len(args) == 0 {
+		return
+	}
+	hm, err := strconv.Atoi(args)
+	if err != nil {
+		return nil, Error{InnerError: err,
+			ReplyText: "请输入正确的时间范围：[UTC-1200, UTC+1400]\n默认时区为+0800",
+		}
+	}
+	if hm > 1400 || hm < -1200 {
+		return nil, Error{InnerError: nil,
+			ReplyText: "请输入正确的时间范围：[UTC-1200, UTC+1400]\n默认时区为+0800",
+		}
+	}
+	hours := hm / 100
+	minutes := hm % 100
+	if math.Abs(float64(minutes)) >= 60 {
+		return nil, Error{InnerError: nil,
+			ReplyText: "请输入正确的时间范围：[UTC-1200, UTC+1400]\n默认时区为+0800",
+		}
+	}
+	timezone := storage.Timezone(hours*60*60 + minutes*60)
+
+	ctx := context.Background()
+	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
+	if err != nil {
+		return nil, Error{InnerError: err,
+			ReplyText: "查询记录时出错了狸",
+		}
+	}
+	if island == nil {
+		return nil, Error{InnerError: err,
+			ReplyText: "更新时区时出错狸",
+		}
+	}
+	island.Timezone = timezone
+	if err = island.Update(ctx); err != nil {
+		logrus.WithError(err).Error("更新时区时出错狸")
+		return nil, Error{InnerError: err,
+			ReplyText: "更新时区时出错狸",
+		}
+	}
+	return []*tgbotapi.MessageConfig{{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: true},
+			Text: "更新了岛屿时区：\n" + island.Timezone.String()}},
+		nil
+}
+
+func cmdMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	ctx := context.Background()
+	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
+	if err != nil {
+		return nil, Error{InnerError: err,
+			ReplyText: "查询记录时出错了狸",
+		}
+	}
+	if island == nil {
+		return []*tgbotapi.MessageConfig{{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              message.Chat.ID,
+					ReplyToMessageID:    message.MessageID,
+					DisableNotification: true},
+				Text: "没有找到您的记录，请先使用 addisland 命令添加岛屿记录"}},
+			nil
+	}
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -195,7 +288,7 @@ func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 		}
 	}
 	if u == nil && strings.HasPrefix(err.Error(), "Not found userID:") {
-		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -211,7 +304,7 @@ func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 		}
 	}
 	if island == nil {
-		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -224,7 +317,7 @@ func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 		island.Info = islandInfo
 		island.Update(ctx)
 	}
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -246,7 +339,7 @@ func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		}
 	}
 	if err != nil && strings.HasPrefix(err.Error(), "Not found userID:") {
-		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -262,7 +355,7 @@ func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		}
 	}
 	if island == nil {
-		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -272,9 +365,10 @@ func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	}
 	if island.AirportIsOpen {
 		island.AirportIsOpen = false
+		island.Info = ""
 		island.Update(ctx)
 	}
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -284,7 +378,7 @@ func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 }
 
 func cmdListIslands(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -311,7 +405,7 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 	ctx := context.Background()
 	err = storage.UpdateDTCPrice(ctx, uid, int(price))
 	if err != nil {
-		if "Not found game: animal_crossing" == err.Error() {
+		if strings.HasPrefix(err.Error(), "Not found island of userID:") {
 			return nil, Error{InnerError: err,
 				ReplyText: "请先登记你的岛屿狸。\n本bot 原本是为交换Nintendo Switch Friend Code而生。\n所以建议先/addfc 登记fc，再/addisland 登记岛屿，再/dtcj 发布价格。\n具体命令帮助请/help",
 			}
@@ -320,7 +414,7 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 			ReplyText: "更新报价时出错狸",
 		}
 	}
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -349,7 +443,7 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 	if err != nil {
 		if "Not found game: animal_crossing" == err.Error() {
 			return nil, Error{InnerError: err,
-				ReplyText: "请先登记你的岛屿狸。\n本bot 原本是为交换Nintendo Switch Friend Code而生。\n所以建议先/addfc 登记fc，再/addisland 登记岛屿，再/dtcj 发布价格。\n具体命令帮助请/help",
+				ReplyText: "请先登记你的岛屿狸。\n本bot 原本是为交换Nintendo Switch Friend Code而生。\n所以建议先/addfc 登记fc，再/addisland 登记岛屿，再/dtcj 发布价格。\n也可以先不添加FC 只添加岛屿信息。\n具体命令帮助请/help",
 			}
 		}
 		return nil, Error{InnerError: err,
@@ -360,11 +454,12 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 		var i, j int = 0, 0
 		for ; i < l; i++ {
 			if j < len(priceHistory) {
-				if prices[i].Date.Weekday() == priceHistory[j].Date.Weekday() &&
+				phd := priceHistory[j].DateTime()
+				if prices[i].Date.Weekday() == phd.Weekday() &&
 					((prices[i].Date.Hour() >= 8 && prices[i].Date.Hour() < 12 &&
-						priceHistory[j].Date.Hour() < 12) ||
+						phd.Hour() < 12) ||
 						(prices[i].Date.Hour() >= 12 && prices[i].Date.Hour() < 21 &&
-							priceHistory[j].Date.Hour() >= 12)) {
+							phd.Hour() >= 12)) {
 					priceHistory[j].Delete(ctx)
 				} else {
 					priceHistory = append(priceHistory, nil)
@@ -382,7 +477,7 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 			ReplyText: "格式化一周报价时出错",
 		}
 	}
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -495,7 +590,7 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 	}
 
 	if len(priceUsers) == 0 {
-		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -529,7 +624,7 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 		replyText += "\n今日最低：\n" + dtcLowsetPrices
 	}
 
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -550,54 +645,55 @@ func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	ctx := context.Background()
 	foundUsersByUserName, err := storage.GetUsersByName(ctx, query, groupID)
 	if err != nil && status.Code(err) != codes.NotFound {
-		return nil, Error{InnerError: err,
-			ReplyText: "查询时出错狸",
-		}
+		logrus.WithError(err).Error("error in GetUsersByName")
 	}
 
 	foundUsersByNSAccountName, err := storage.GetUsersByNSAccountName(ctx, query, groupID)
 	if err != nil && status.Code(err) != codes.NotFound {
-		return nil, Error{InnerError: err,
-			ReplyText: "查询时出错狸",
-		}
+		logrus.WithError(err).Error("error in GetUsersByNSAccountName")
 	}
 
 	foundUsersByIslandName, err := storage.GetUsersByAnimalCrossingIslandName(ctx, query, groupID)
 	if err != nil && status.Code(err) != codes.NotFound {
-		return nil, Error{InnerError: err,
-			ReplyText: "查询时出错狸",
-		}
+		logrus.WithError(err).Error("error in GetUsersByAnimalCrossingIslandName")
 	}
 
 	foundUserByOwnerName, err := storage.GetUsersByAnimalCrossingIslandOwnerName(ctx, query, groupID)
 	if err != nil && status.Code(err) != codes.NotFound {
-		return nil, Error{InnerError: err,
-			ReplyText: "查询时出错狸",
-		}
+		logrus.WithError(err).Error("error in GetUsersByAnimalCrossingIslandOwnerName")
+	}
+
+	foundUserByIslandInfo, err := storage.GetUsersByAnimalCrossingIslandInfo(ctx, query, groupID)
+	if err != nil && status.Code(err) != codes.NotFound {
+		logrus.WithError(err).Error("error in GetUsersByAnimalCrossingIslandOpenInfo")
 	}
 
 	var replyText string
 	if len(foundUsersByUserName) > 0 {
-		replyText += fmt.Sprintf("找到用户名为 %s 的用户：\n%s\n", query, userInfo(foundUsersByUserName))
+		replyText += fmt.Sprintf("找到用户名为 %s 的用户和Ta的岛屿：\n%s\n", query, userInfo(foundUsersByUserName))
 	}
 
 	if len(foundUsersByNSAccountName) > 0 {
-		replyText += fmt.Sprintf("找到 NSAccount 为 %s 的用户：\n%s\n", query, userInfo(foundUsersByNSAccountName))
+		replyText += fmt.Sprintf("找到 NSAccount 为 %s 的用户和Ta的岛屿：\n%s\n", query, userInfo(foundUsersByNSAccountName))
 	}
 
 	if len(foundUsersByIslandName) > 0 {
-		replyText += fmt.Sprintf("找到 岛屿名称 为 %s 的用户和岛屿：\n%s\n", query, userInfo(foundUsersByIslandName))
+		replyText += fmt.Sprintf("找到 岛屿名称 为 %s 的用户和Ta的岛屿：\n%s\n", query, userInfo(foundUsersByIslandName))
 	}
 
 	if len(foundUserByOwnerName) > 0 {
-		replyText += fmt.Sprintf("找到 岛民代表名称 为 %s 的用户和岛屿：\n%s\n", query, userInfo(foundUserByOwnerName))
+		replyText += fmt.Sprintf("找到 岛民代表名称 为 %s 的用户和Ta的岛屿：\n%s\n", query, userInfo(foundUserByOwnerName))
+	}
+
+	if len(foundUserByIslandInfo) > 0 {
+		replyText += fmt.Sprintf("找到 岛屿信息中包含近似内容 为 %s 的用户和Ta的岛屿：\n%s\n", query, userInfo(foundUserByIslandInfo))
 	}
 	replyText = strings.TrimSpace(replyText)
 	if len(replyText) == 0 {
 		replyText = "没有找到狸。"
 	}
 
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -614,7 +710,7 @@ func userInfo(users []*storage.User) (replyMessage string) {
 			rst = append(rst, a.String())
 		}
 		if u.Island != nil {
-			if !strings.HasPrefix(u.Island.Name, "岛") {
+			if !strings.HasSuffix(u.Island.Name, "岛") {
 				u.Island.Name += "岛"
 			}
 			rst = append(rst, "岛屿："+u.Island.Name)
@@ -631,6 +727,9 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 	ctx := context.Background()
 	var us []*storage.User
 	if message.ReplyToMessage != nil && message.ReplyToMessage.From.ID != message.From.ID {
+		if len(args) == 0 {
+			return cmdMyIsland(message)
+		}
 		groupID := message.Chat.ID
 		u, err := storage.GetUser(ctx, message.ReplyToMessage.From.ID, groupID)
 		if err != nil {
@@ -655,12 +754,12 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 			}
 		}
 	} else {
-		return nil, errors.New("not reply to any message or not at anyone")
+		return cmdWhois(message)
 	}
 
 	if len(us) == 0 {
 		logrus.Info("users count == 0")
-		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -684,7 +783,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 	}
 
 	if user == nil {
-		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -700,7 +799,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 		}
 	}
 	if island == nil {
-		return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -709,7 +808,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 			nil
 	}
 
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -719,7 +818,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 }
 
 func cmdHuaShiJiaoHuanBiaoGe(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
-	return []*tgbotapi.MessageConfig{&tgbotapi.MessageConfig{
+	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
