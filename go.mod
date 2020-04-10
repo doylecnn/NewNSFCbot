@@ -13,6 +13,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/sirupsen/logrus v1.4.2
 	github.com/technoweenie/multipartstreamer v1.0.1 // indirect
+	github.com/thinkerou/favicon v0.1.0
 	google.golang.org/api v0.20.0
 	google.golang.org/grpc v1.28.0
 	gopkg.in/yaml.v2 v2.2.7 // indirect

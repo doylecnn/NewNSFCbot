@@ -311,7 +311,7 @@ func cmdWebLogin(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
-			Text: fmt.Sprintf("https://%s.appspot.com/login", _projectID)}},
+			Text: fmt.Sprintf("http://%s/login", _domain)}},
 		nil
 }
 

@@ -16,6 +16,7 @@ type env struct {
 	BotToken   string
 	BotAdminID int
 	AppID      string
+	Domain     string
 	projectID  string
 }
 
@@ -23,8 +24,8 @@ func main() {
 	logrus.SetLevel(logrus.DebugLevel)
 	env := readEnv()
 	storage.ProjectID = env.projectID
-	bot := chatbot.NewChatBot(env.BotToken, env.AppID, env.projectID, env.Port, env.BotAdminID)
-	web, updates := web.NewWeb(env.BotToken, env.AppID, env.projectID, env.Port, env.BotAdminID, bot)
+	bot := chatbot.NewChatBot(env.BotToken, env.Domain, env.AppID, env.projectID, env.Port, env.BotAdminID)
+	web, updates := web.NewWeb(env.BotToken, env.Domain, env.AppID, env.projectID, env.Port, env.BotAdminID, bot)
 
 	go bot.MessageHandler(updates)
 	web.Run()
@@ -61,5 +62,10 @@ func readEnv() env {
 		logrus.Fatal("no env var: PROJECT_ID")
 	}
 
-	return env{port, token, botAdminID, appID, projectID}
+	domain := os.Getenv("DOMAIN")
+	if domain == "" {
+		logrus.Fatal("no env var: DOMAIN")
+	}
+
+	return env{port, token, botAdminID, appID, domain, projectID}
 }

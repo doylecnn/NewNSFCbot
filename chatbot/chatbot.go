@@ -19,6 +19,7 @@ var (
 	tgbot      *tgbotapi.BotAPI
 	botAdminID int
 	_projectID string
+	_domain    string
 	cache      *lru.Cache
 )
 
@@ -32,7 +33,7 @@ type ChatBot struct {
 }
 
 // NewChatBot return new chat bot
-func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
+func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatBot {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		logrus.Fatalln(err)
@@ -123,6 +124,7 @@ func NewChatBot(token, appID, projectID, port string, adminID int) ChatBot {
 
 	botAdminID = adminID
 	_projectID = projectID
+	_domain = domain
 
 	c := ChatBot{TgBotClient: bot, Route: router, ProjectID: projectID, appID: appID, token: token}
 

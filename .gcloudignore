@@ -26,3 +26,5 @@
 *.sql
 *.sample.yaml
 README.md
+*.key
+*.js.map

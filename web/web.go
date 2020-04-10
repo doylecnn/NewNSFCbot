@@ -16,10 +16,12 @@ import (
 	"github.com/gin-gonic/gin"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/sirupsen/logrus"
+	"github.com/thinkerou/favicon"
 )
 
 // Web is web
 type Web struct {
+	APPID       string
 	Domain      string
 	Port        string
 	TgBotToken  string
@@ -30,12 +32,13 @@ type Web struct {
 }
 
 // NewWeb return new Web
-func NewWeb(token, appID, projectID, port string, adminID int, bot chatbot.ChatBot) (web Web, updates chan tgbotapi.Update) {
+func NewWeb(token, domain, appID, projectID, port string, adminID int, bot chatbot.ChatBot) (web Web, updates chan tgbotapi.Update) {
 	gin.SetMode(gin.ReleaseMode)
-	r := gin.New()
+	r := gin.Default()
 	secretKey := sha256.Sum256([]byte(token))
 	web = Web{
-		Domain:      fmt.Sprintf("%s.appspot.com", appID),
+		APPID:       appID,
+		Domain:      domain,
 		Port:        port,
 		TgBotToken:  token,
 		TgBotClient: bot.TgBotClient,
@@ -43,8 +46,9 @@ func NewWeb(token, appID, projectID, port string, adminID int, bot chatbot.ChatB
 		Route:       r,
 		AdminID:     adminID,
 	}
+	r.Use(favicon.New("./web/static/favicon.png"))
+	r.Static("/ACNH_Turnip_Calculator", "web/static/ACNH_Turnip_Calculator")
 
-	r.Use(gin.Recovery())
 	r.LoadHTMLGlob("web/templates/*")
 
 	r.GET("/", web.Index)
@@ -52,9 +56,7 @@ func NewWeb(token, appID, projectID, port string, adminID int, bot chatbot.ChatB
 	r.GET("/auth", web.Auth)
 	r.GET("/login", web.Login)
 
-	r.Static("/ACNH_Turnip_Calculator", "web/assets/ACNH_Turnip_Calculator/dist")
-
-	authorized := r.Group("/authed", middleware.TelegramAuth(secretKey))
+	authorized := r.Group("/", middleware.TelegramAuth(secretKey))
 	{
 		authorized.GET("/user/:userid", web.User)
 		authorized.GET("/islands", web.Islands)

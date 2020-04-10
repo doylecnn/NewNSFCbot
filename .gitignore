@@ -1,3 +1,5 @@
 .vscode/
 app.yaml
-web/assets/ACNH_Turnip_Calculator/
+web/static/ACNH_Turnip_Calculator/
+*.pem
+*.key
