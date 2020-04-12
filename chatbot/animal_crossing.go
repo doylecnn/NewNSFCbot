@@ -727,9 +727,6 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 	ctx := context.Background()
 	var us []*storage.User
 	if message.ReplyToMessage != nil && message.ReplyToMessage.From.ID != message.From.ID {
-		if len(args) == 0 {
-			return cmdMyIsland(message)
-		}
 		groupID := message.Chat.ID
 		u, err := storage.GetUser(ctx, message.ReplyToMessage.From.ID, groupID)
 		if err != nil {
@@ -753,6 +750,8 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 				ReplyText: "查询记录时出错狸",
 			}
 		}
+	} else if len(args) == 0 {
+		return cmdMyIsland(message)
 	} else {
 		return cmdWhois(message)
 	}
