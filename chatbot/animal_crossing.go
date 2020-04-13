@@ -429,6 +429,14 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	args := strings.TrimSpace(message.CommandArguments())
 	uid := message.From.ID
+	if message.From.ID == botAdminID && strings.HasPrefix(args, "#") {
+		uid, err = strconv.Atoi(args[1:])
+		if err != nil {
+			uid = message.From.ID
+		} else {
+			args = ""
+		}
+	}
 	ctx := context.Background()
 	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {

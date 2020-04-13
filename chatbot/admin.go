@@ -3,6 +3,7 @@ package chatbot
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -194,5 +195,41 @@ func cmdToggleDebugMode(message *tgbotapi.Message) (replyMessages []*tgbotapi.Me
 			ReplyToMessageID:    message.MessageID,
 			DisableNotification: true},
 		Text: debugInfo})
+	return replyMessages, nil
+}
+
+func (c ChatBot) cmdClearMessages(message *tgbotapi.Message) (replyMessages []*tgbotapi.MessageConfig, err error) {
+	if len(sentMsgs) > 0 {
+		logrus.WithField("sentMsgs len:", len(sentMsgs))
+		sort.Slice(sentMsgs, func(i, j int) bool {
+			return sentMsgs[i].Time.After(sentMsgs[j].Time)
+		})
+		var i = 0
+		var foundOutDateMsg = false
+		for j, sentMsg := range sentMsgs {
+			if time.Since(sentMsg.Time).Minutes() > 1 {
+				foundOutDateMsg = true
+				i = j
+				break
+			}
+		}
+		if foundOutDateMsg {
+			for _, sentMsg := range sentMsgs[i:] {
+				c.TgBotClient.DeleteMessage(tgbotapi.NewDeleteMessage(sentMsg.ChatID, sentMsg.MsgID))
+			}
+		}
+		sentMsgs = sentMsgs[0:0]
+	}
+	cacheForEdit.Purge()
+	logrus.WithFields(logrus.Fields{
+		"sentMsgs len":     len(sentMsgs),
+		"cacheForEdit len": cacheForEdit.Len(),
+	}).Info("clear")
+	replyMessages = append(replyMessages, &tgbotapi.MessageConfig{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID:              message.Chat.ID,
+			ReplyToMessageID:    message.MessageID,
+			DisableNotification: true},
+		Text: "done"})
 	return replyMessages, nil
 }

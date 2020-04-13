@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,12 +19,19 @@ import (
 )
 
 var (
-	tgbot      *tgbotapi.BotAPI
-	botAdminID int
-	_projectID string
-	_domain    string
-	cache      *lru.Cache
+	tgbot        *tgbotapi.BotAPI
+	botAdminID   int
+	_projectID   string
+	_domain      string
+	cacheForEdit *lru.Cache
+	sentMsgs     []sentMessage
 )
+
+type sentMessage struct {
+	ChatID int64
+	MsgID  int
+	Time   time.Time
+}
 
 // ChatBot is chat bot
 type ChatBot struct {
@@ -85,6 +93,11 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 	}
 
 	router := NewRouter()
+	botAdminID = adminID
+	_projectID = projectID
+	_domain = domain
+	c := ChatBot{TgBotClient: bot, Route: router, ProjectID: projectID, appID: appID, token: token}
+
 	router.HandleFunc("help", func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
@@ -128,20 +141,15 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 	router.HandleFunc("updatetimezone", cmdUpgradeData)
 	router.HandleFunc("fclistall", cmdListAllFriendCodes)
 	router.HandleFunc("debug", cmdToggleDebugMode)
+	router.HandleFunc("clear", c.cmdClearMessages)
 
 	logrus.WithFields(logrus.Fields{"bot username": bot.Self.UserName,
 		"bot id": bot.Self.ID}).Infof("Authorized on account %s, ID: %d", bot.Self.UserName, bot.Self.ID)
 
-	botAdminID = adminID
-	_projectID = projectID
-	_domain = domain
-
-	c := ChatBot{TgBotClient: bot, Route: router, ProjectID: projectID, appID: appID, token: token}
-
 	if err = c.SetWebhook(); err != nil {
 		logrus.Error(err)
 	}
-	if cache, err = lru.New(17); err != nil {
+	if cacheForEdit, err = lru.New(17); err != nil {
 		logrus.WithError(err).Error("new lru cache failed")
 	}
 
@@ -204,13 +212,36 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 			}
 		} else if message != nil && message.IsCommand() {
 			if message.Chat.IsGroup() || message.Chat.IsSuperGroup() || message.Chat.IsPrivate() {
+				if len(sentMsgs) > 0 {
+					sort.Slice(sentMsgs, func(i, j int) bool {
+						return sentMsgs[i].Time.After(sentMsgs[j].Time)
+					})
+					var i = 0
+					var foundOutDateMsg = false
+					for j, sentMsg := range sentMsgs {
+						if time.Since(sentMsg.Time).Minutes() > 2 {
+							foundOutDateMsg = true
+							i = j
+							break
+						}
+					}
+					if foundOutDateMsg {
+						logrus.WithField("sentMsgs len:", len(sentMsgs))
+						for _, sentMsg := range sentMsgs[i:] {
+							c.TgBotClient.DeleteMessage(tgbotapi.NewDeleteMessage(sentMsg.ChatID, sentMsg.MsgID))
+						}
+						copy(sentMsgs, sentMsgs[i:])
+						sentMsgs = sentMsgs[:len(sentMsgs)-i]
+						logrus.WithField("sentMsgs len:", len(sentMsgs))
+					}
+				}
 				messageSendTime := message.Time()
 				if !isEditedMessage && time.Since(messageSendTime).Seconds() > 30 {
 					logrus.Infof("old message dropped: %s", message.Text)
 					continue
 				}
 				if isEditedMessage {
-					if time.Since(messageSendTime).Minutes() > 5 {
+					if time.Since(messageSendTime).Minutes() > 2 {
 						logrus.Infof("old message dropped: %s", message.Text)
 						continue
 					}
@@ -225,14 +256,14 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				var canEditSentMsgID int
 				if isEditedMessage {
 					logrus.WithField("editedmessage", message.Text).Info("editedmessage received")
-					if cache != nil {
-						if v, ok := cache.Get(key); ok {
+					if cacheForEdit != nil {
+						if v, ok := cacheForEdit.Get(key); ok {
 							if ids, ok := v.([]int); ok {
 								if len(ids) > 1 {
 									for _, id := range ids {
 										c.TgBotClient.DeleteMessage(tgbotapi.NewDeleteMessage(message.Chat.ID, id))
 									}
-									cache.Remove(key)
+									cacheForEdit.Remove(key)
 								} else {
 									canEditSentMsg = true
 									canEditSentMsgID = ids[0]
@@ -241,6 +272,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 						}
 					}
 				}
+				c.TgBotClient.Send(tgbotapi.NewChatAction(message.Chat.ID, tgbotapi.ChatTyping))
 				replyMessages, err := c.Route.Run(message)
 				var sentMessageIDs []int
 				if err != nil {
@@ -255,9 +287,12 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 						if err != nil {
 							logrus.WithError(err).Error("send message failed")
 						} else {
-							if cache != nil {
+							if cacheForEdit != nil {
 								sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
-								cache.Add(key, sentMessageIDs)
+								cacheForEdit.Add(key, sentMessageIDs)
+							}
+							if !message.Chat.IsPrivate() {
+								sentMsgs = append(sentMsgs, sentMessage{ChatID: message.Chat.ID, MsgID: sentM.MessageID, Time: sentM.Time()})
 							}
 						}
 					}
@@ -295,8 +330,11 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 										if err != nil {
 											logrus.WithError(err).Error("send message failed")
 										} else {
-											if cache != nil {
+											if cacheForEdit != nil {
 												sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
+											}
+											if !message.Chat.IsPrivate() {
+												sentMsgs = append(sentMsgs, sentMessage{ChatID: message.Chat.ID, MsgID: sentM.MessageID, Time: sentM.Time()})
 											}
 										}
 									}
@@ -305,13 +343,16 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 									if err != nil {
 										logrus.WithError(err).Error("send message failed")
 									} else {
-										if cache != nil {
+										if cacheForEdit != nil {
 											sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
+										}
+										if !message.Chat.IsPrivate() {
+											sentMsgs = append(sentMsgs, sentMessage{ChatID: message.Chat.ID, MsgID: sentM.MessageID, Time: sentM.Time()})
 										}
 									}
 								}
-								if len(sentMessageIDs) > 0 && cache != nil {
-									cache.Add(key, sentMessageIDs)
+								if len(sentMessageIDs) > 0 && cacheForEdit != nil {
+									cacheForEdit.Add(key, sentMessageIDs)
 								}
 							}
 						}
