@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 
 	fuzzy "github.com/doylecnn/go-fuzzywuzzy"
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -70,9 +71,9 @@ func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 			logrus.WithError(err).Error("add groupid to user's groupids failed")
 		}
 		g, err := storage.GetGroup(ctx, groupID)
-		if err != nil && !strings.HasPrefix(err.Error(), "Not found group:") {
+		if err != nil && status.Code(err) != codes.NotFound {
 			logrus.Errorf("GetGroupError:%v", err)
-		} else if err != nil && strings.HasPrefix(err.Error(), "Not found group:") {
+		} else if err != nil && status.Code(err) == codes.NotFound {
 			g = storage.Group{ID: message.Chat.ID, Type: message.Chat.Type, Title: message.Chat.Title}
 			g.Set(ctx)
 		} else {

@@ -63,11 +63,8 @@ func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Isla
 	var islandDocPath = fmt.Sprintf("users/%d/games/animal_crossing", uid)
 	dsnap, err := client.Doc(islandDocPath).Get(ctx)
 	if err != nil {
-		if status.Code(err) != codes.NotFound {
-			logrus.Warnf("failed when get island: %v", err)
-			return nil, err
-		}
-		return nil, fmt.Errorf("Not found island of userID: %d", uid)
+		logrus.Warnf("failed when get island: %v", err)
+		return nil, err
 	}
 	island = &Island{}
 	if err = dsnap.DataTo(island); err != nil {

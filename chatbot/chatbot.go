@@ -13,6 +13,8 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -341,7 +343,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				g := storage.Group{ID: message.Chat.ID, Type: message.Chat.Type, Title: message.Chat.Title}
 				og, err := storage.GetGroup(ctx, g.ID)
 				if err != nil {
-					if strings.HasPrefix(err.Error(), "Not found group:") {
+					if status.Code(err) == codes.NotFound {
 						g.Set(ctx)
 					} else {
 						logrus.WithError(err).Error("get group failed")

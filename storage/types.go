@@ -110,13 +110,13 @@ func GetUser(ctx context.Context, userID int, groupID int64) (user *User, err er
 	defer client.Close()
 
 	dsnap, err := client.Doc(fmt.Sprintf("users/%d", userID)).Get(ctx)
-	if err != nil && status.Code(err) != codes.NotFound {
-		logrus.Warnf("Failed when get user: %v", err)
+	if err != nil {
+		if err != nil && status.Code(err) == codes.NotFound {
+			logrus.Warnf("Not found userID: %d", userID)
+		} else {
+			logrus.Warnf("Failed when get user: %v", err)
+		}
 		return nil, err
-	}
-	if !dsnap.Exists() || (err != nil && status.Code(err) == codes.NotFound) {
-		logrus.Warnf("Not found userID: %d", userID)
-		return nil, fmt.Errorf("Not found userID: %d", userID)
 	}
 	user = &User{}
 	if err = dsnap.DataTo(user); err != nil {
@@ -131,7 +131,7 @@ func GetUser(ctx context.Context, userID int, groupID int64) (user *User, err er
 			return user, nil
 		}
 	}
-	return nil, fmt.Errorf("Not found userID: %d", userID)
+	return
 }
 
 // GetAllUsers get all users
@@ -553,12 +553,11 @@ func GetGroup(ctx context.Context, groupID int64) (group Group, err error) {
 
 	dsnap, err := client.Doc(fmt.Sprintf("groups/%d", groupID)).Get(ctx)
 	if err != nil && status.Code(err) != codes.NotFound {
-		logrus.Warnf("Failed when get group: %v", err)
-		return
-	}
-	if !dsnap.Exists() || (err != nil && status.Code(err) == codes.NotFound) {
-		logrus.Warnf("Not found group: %d", groupID)
-		err = fmt.Errorf("Not found group: %d", groupID)
+		if status.Code(err) == codes.NotFound {
+			logrus.Warnf("Not found group: %d", groupID)
+		} else {
+			logrus.Warnf("Failed when get group: %v", err)
+		}
 		return
 	}
 	if err = dsnap.DataTo(&group); err != nil {

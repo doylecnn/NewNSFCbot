@@ -9,6 +9,8 @@ import (
 
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
@@ -35,12 +37,12 @@ func cmdAddFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	}
 	ctx := context.Background()
 	u, err := storage.GetUser(ctx, message.From.ID, groupID)
-	if err != nil && !strings.HasPrefix(err.Error(), "Not found userID:") {
+	if err != nil && status.Code(err) != codes.NotFound {
 		return nil, Error{InnerError: err,
 			ReplyText: fmt.Sprintf("创建用户信息时出错: %v", err),
 		}
 	}
-	if err != nil && strings.HasPrefix(err.Error(), "Not found userID:") {
+	if err != nil && status.Code(err) == codes.NotFound {
 		username := message.From.UserName
 		if len(username) == 0 {
 			username = strings.TrimSpace(message.From.FirstName + " " + message.From.LastName)
@@ -111,7 +113,7 @@ func cmdDelFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	ctx := context.Background()
 	u, err := storage.GetUser(ctx, message.From.ID, 0)
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "Not found userID:") {
+		if status.Code(err) == codes.NotFound {
 			return nil, Error{InnerError: err,
 				ReplyText: fmt.Sprintf("本bot 没有记录您的FC信息: %v", err),
 			}
@@ -168,12 +170,12 @@ func cmdDeleteMe(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	ctx := context.Background()
 	u, err := storage.GetUser(ctx, message.From.ID, 0)
-	if err != nil && !strings.HasPrefix(err.Error(), "Not found userID:") {
+	if err != nil && status.Code(err) != codes.NotFound {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询记录时出错了",
 		}
 	}
-	if err != nil && strings.HasPrefix(err.Error(), "Not found userID:") {
+	if err != nil && status.Code(err) == codes.NotFound {
 		logrus.Debug("没有找到用户记录")
 		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
@@ -207,7 +209,7 @@ func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 		var groupID int64 = message.Chat.ID
 		u, err := storage.GetUser(ctx, message.ReplyToMessage.From.ID, groupID)
 		if err != nil {
-			if strings.HasPrefix(err.Error(), "Not found userID:") {
+			if status.Code(err) == codes.NotFound {
 				return nil, Error{InnerError: err,
 					ReplyText: "没有找岛（到）这位用户的信息狸",
 				}
@@ -258,10 +260,10 @@ func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 func inlineQueryMyFC(query *tgbotapi.InlineQuery) (*tgbotapi.InlineConfig, error) {
 	ctx := context.Background()
 	u, err := storage.GetUser(ctx, query.From.ID, 0)
-	if err != nil && !strings.HasPrefix(err.Error(), "Not found userID:") {
+	if err != nil && status.Code(err) != codes.NotFound {
 		return nil, err
 	}
-	if err != nil && strings.HasPrefix(err.Error(), "Not found userID:") {
+	if err != nil && status.Code(err) == codes.NotFound {
 		return nil, errors.New("user not found")
 	}
 	var astr []string
@@ -279,10 +281,10 @@ func inlineQueryMyFC(query *tgbotapi.InlineQuery) (*tgbotapi.InlineConfig, error
 func inlineQueryMyIsland(query *tgbotapi.InlineQuery) (*tgbotapi.InlineConfig, error) {
 	ctx := context.Background()
 	u, err := storage.GetUser(ctx, query.From.ID, 0)
-	if err != nil && !strings.HasPrefix(err.Error(), "Not found userID:") {
+	if err != nil && status.Code(err) != codes.NotFound {
 		return nil, nil
 	}
-	if err != nil && strings.HasPrefix(err.Error(), "Not found userID:") {
+	if err != nil && status.Code(err) == codes.NotFound {
 		return &tgbotapi.InlineConfig{
 			InlineQueryID: query.ID,
 			Results:       []interface{}{tgbotapi.NewInlineQueryResultArticle(query.ID, "您没有记录过您的 Friend Code", "请先使 addFC 登记，再用 addisland 命令添加岛屿")},
@@ -291,6 +293,7 @@ func inlineQueryMyIsland(query *tgbotapi.InlineQuery) (*tgbotapi.InlineConfig, e
 	}
 	island, err := u.GetAnimalCrossingIsland(ctx)
 	if err != nil {
+		logrus.WithError(err).Info("inlineQueryMyIsland GetAnimalCrossingIsland")
 		return nil, nil
 	}
 	if island == nil {

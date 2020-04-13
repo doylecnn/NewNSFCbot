@@ -8,6 +8,8 @@ import (
 
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
@@ -35,7 +37,7 @@ func cmdImportData(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 		u := storage.User{ID: int(tgid), Name: name, NSAccounts: []storage.NSAccount{{Name: name, FC: storage.FriendCode(fc)}}}
 		_, err = storage.GetUser(ctx, u.ID, 0)
 		if err != nil {
-			if !strings.HasPrefix(err.Error(), "Not found userID:") {
+			if status.Code(err) != codes.NotFound {
 				continue
 			}
 			u.Set(ctx)

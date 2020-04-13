@@ -55,7 +55,7 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	ctx := context.Background()
 	u, err := storage.GetUser(ctx, message.From.ID, groupID)
 	if err != nil {
-		if !strings.HasPrefix(err.Error(), "Not found userID:") {
+		if status.Code(err) != codes.NotFound {
 			return nil, Error{InnerError: err,
 				ReplyText: fmt.Sprintf("添加岛屿时失败狸。error info: %v", err),
 			}
@@ -103,7 +103,7 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 			}
 		}
 	} else {
-		if island, err = u.GetAnimalCrossingIsland(ctx); err != nil && !strings.HasPrefix(err.Error(), "Not found island of userID:") {
+		if island, err = u.GetAnimalCrossingIsland(ctx); err != nil && status.Code(err) != codes.NotFound {
 			return nil, Error{InnerError: err,
 				ReplyText: fmt.Sprintf("添加岛屿时失败狸。error info: %v", err),
 			}
@@ -282,23 +282,24 @@ func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 
 	ctx := context.Background()
 	u, err := storage.GetUser(ctx, message.From.ID, groupID)
-	if err != nil && !strings.HasPrefix(err.Error(), "Not found userID:") {
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, Error{InnerError: err,
+				ReplyText: "您没有登记过岛屿狸。请使用/addisland 添加岛屿。",
+			}
+		}
 		return nil, Error{InnerError: err,
 			ReplyText: "查询记录时出错狸",
 		}
 	}
-	if u == nil && strings.HasPrefix(err.Error(), "Not found userID:") {
-		return []*tgbotapi.MessageConfig{{
-				BaseChat: tgbotapi.BaseChat{
-					ChatID:              message.Chat.ID,
-					ReplyToMessageID:    message.MessageID,
-					DisableNotification: true},
-				Text: "没有找到您的记录，请先使用 addisland 命令添加岛屿记录狸"}},
-			nil
-	}
 	logrus.Debugf("user:%s", u.Name)
 	island, err := u.GetAnimalCrossingIsland(ctx)
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, Error{InnerError: err,
+				ReplyText: "您没有登记过岛屿狸。请使用/addisland 添加岛屿。",
+			}
+		}
 		return nil, Error{InnerError: err,
 			ReplyText: "查询记录时出错狸",
 		}
@@ -333,12 +334,12 @@ func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	}
 	ctx := context.Background()
 	u, err := storage.GetUser(ctx, message.From.ID, groupID)
-	if err != nil && !strings.HasPrefix(err.Error(), "Not found userID:") {
+	if err != nil && status.Code(err) != codes.NotFound {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询记录时出错狸",
 		}
 	}
-	if err != nil && strings.HasPrefix(err.Error(), "Not found userID:") {
+	if err != nil && status.Code(err) == codes.NotFound {
 		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
@@ -405,7 +406,7 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 	ctx := context.Background()
 	err = storage.UpdateDTCPrice(ctx, uid, int(price))
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "Not found island of userID:") {
+		if status.Code(err) == codes.NotFound {
 			return nil, Error{InnerError: err,
 				ReplyText: "请先登记你的岛屿狸。\n本bot 原本是为交换Nintendo Switch Friend Code而生。\n所以建议先/addfc 登记fc，再/addisland 登记岛屿，再/dtcj 发布价格。\n具体命令帮助请/help",
 			}
@@ -757,7 +758,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 		groupID := message.Chat.ID
 		u, err := storage.GetUser(ctx, message.ReplyToMessage.From.ID, groupID)
 		if err != nil {
-			if strings.HasPrefix(err.Error(), "Not found userID:") {
+			if status.Code(err)==codes.NotFound {
 				return nil, Error{InnerError: err,
 					ReplyText: "没有找岛狸",
 				}
