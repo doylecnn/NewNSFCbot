@@ -196,13 +196,15 @@ func (w Web) export(c *gin.Context) {
 								}
 								g := game{Name: "AnimalCrossing",
 									Info: map[string]interface{}{
-										"airportIsOpen": axi.AirportIsOpen,
-										"info":          axi.Info,
-										"fruits":        axi.Fruits,
-										"hemisphere":    axi.Hemisphere,
-										"name":          axi.Name,
-										"owner":         axi.Owner,
-										"priceHistory":  pricehistory,
+										"airportIsOpen":  axi.AirportIsOpen,
+										"islandBaseInfo": axi.BaseInfo,
+										"timezone":       axi.Timezone,
+										"info":           axi.Info,
+										"fruits":         axi.Fruits,
+										"hemisphere":     axi.Hemisphere,
+										"name":           axi.Name,
+										"owner":          axi.Owner,
+										"priceHistory":   pricehistory,
 									},
 								}
 								games = append(games, g)
