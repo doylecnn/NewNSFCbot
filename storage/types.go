@@ -72,10 +72,10 @@ func (u User) Delete(ctx context.Context) (err error) {
 		games := docRef.Collection("games")
 		if games != nil {
 			priceHistory := games.Doc("animal_crossing").Collection("price_history")
-			if err = deleteCollection(ctx, client, priceHistory, 10); err != nil {
+			if err = DeleteCollection(ctx, client, priceHistory, 10); err != nil {
 				logrus.Warnf("Failed delete collection price_history: %v", err)
 			}
-			if err = deleteCollection(ctx, client, games, 10); err != nil {
+			if err = DeleteCollection(ctx, client, games, 10); err != nil {
 				logrus.Warnf("Failed delete collection games: %v", err)
 			}
 		}
@@ -322,10 +322,6 @@ func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupI
 				}
 				if u != nil {
 					island.Path = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
-					if island.Timezone == 0 {
-						island.Timezone = Timezone(8 * 3600)
-						island.Update(ctx)
-					}
 					island.LastPrice.Timezone = island.Timezone
 					u.Island = &island
 					u.Path = fmt.Sprintf("users/%d", u.ID)
@@ -374,10 +370,6 @@ func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string, g
 				}
 				if u != nil {
 					island.Path = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
-					if len(island.Timezone.String()) == 0 {
-						island.Timezone = Timezone(8 * 3600)
-						island.Update(ctx)
-					}
 					island.LastPrice.Timezone = island.Timezone
 					u.Island = &island
 					u.Path = fmt.Sprintf("users/%d", u.ID)
@@ -427,15 +419,10 @@ func GetUsersByAnimalCrossingIslandInfo(ctx context.Context, info string, groupI
 				u := &User{}
 				if err = doc.DataTo(u); err != nil {
 					logrus.WithError(err).Error("error when DataTo user")
-					u = nil
 					continue
 				}
 				if u != nil {
 					island.Path = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
-					if len(island.Timezone.String()) == 0 {
-						island.Timezone = Timezone(8 * 3600)
-						island.Update(ctx)
-					}
 					island.LastPrice.Timezone = island.Timezone
 					u.Island = &island
 					u.Path = fmt.Sprintf("users/%d", u.ID)
@@ -566,7 +553,8 @@ func GetGroup(ctx context.Context, groupID int64) (group Group, err error) {
 	return
 }
 
-func deleteCollection(ctx context.Context, client *firestore.Client,
+// DeleteCollection help delete whole collection
+func DeleteCollection(ctx context.Context, client *firestore.Client,
 	ref *firestore.CollectionRef, batchSize int) error {
 	if ref == nil {
 		return nil

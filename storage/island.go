@@ -46,7 +46,7 @@ type Island struct {
 	AirportIsOpen    bool         `firestore:"AirportIsOpen"`
 	BaseInfo         string       `firestore:"BaseInfo"`
 	Info             string       `firestore:"Info"`
-	Timezone         Timezone     `filestore:"timezone,omitempty"`
+	Timezone         Timezone     `filestore:"timezone"`
 	Fruits           []string     `firestore:"Fruits,omitempty"`
 	LastPrice        PriceHistory `firestore:"LastPrice"`
 	Owner            string       `firestore:"owner,omitempty"`
@@ -71,10 +71,7 @@ func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Isla
 		return
 	}
 	island.Path = islandDocPath
-	if island.Timezone == 0 {
-		island.Timezone = Timezone(8 * 3600)
-		island.Update(ctx)
-	} else if math.Abs(float64(island.Timezone)) > 1000000000.0 {
+	if math.Abs(float64(island.Timezone)) > 1000000000.0 {
 		island.Timezone /= 1000000000
 		island.Update(ctx)
 	}
@@ -144,7 +141,7 @@ type PriceHistory struct {
 	Path     string    `firestore:"-"`
 	Date     time.Time `firestore:"Date"`
 	Price    int       `firestore:"Price"`
-	Timezone Timezone  `firestore:"Timezone,omitempty"`
+	Timezone Timezone  `firestore:"Timezone"`
 }
 
 // Set price history
@@ -189,12 +186,7 @@ func (p PriceHistory) Delete(ctx context.Context) (err error) {
 //LocationDateTime get location datetime
 func (p PriceHistory) LocationDateTime() (datetime time.Time) {
 	var loc *time.Location
-	if p.Timezone == 0 {
-		p.Timezone = Timezone(8 * 3600)
-		loc = p.Timezone.Location()
-	} else {
-		loc = p.Timezone.Location()
-	}
+	loc = p.Timezone.Location()
 	datetime = p.Date.In(loc)
 	return
 }

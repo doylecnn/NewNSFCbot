@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
+	"cloud.google.com/go/firestore"
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
@@ -54,8 +56,8 @@ func cmdImportData(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 		nil
 }
 
-// cmdUpdateGroupInfo 刷新群信息，移除用户已退出的群
-func cmdUpdateGroupInfo(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+// cmdUpgradeData 数据结构更新
+func cmdUpgradeData(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	if message.From.ID != botAdminID {
 		return
 	}
@@ -67,55 +69,66 @@ func cmdUpdateGroupInfo(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 		}
 		return
 	}
-	groups, err := storage.GetAllGroups(ctx)
+	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
-		err = Error{InnerError: err,
-			ReplyText: "查询群组时出错",
-		}
 		return
 	}
-
-	var groupIDs map[int64]struct{} = make(map[int64]struct{})
-	for _, g := range groups {
-		if _, exists := groupIDs[g.ID]; !exists {
-			groupIDs[g.ID] = struct{}{}
-		}
-	}
-
+	defer client.Close()
 	for _, u := range users {
-		for _, gid := range u.GroupIDs {
-			if _, exists := groupIDs[gid]; !exists {
-				groupIDs[gid] = struct{}{}
+		island, err := u.GetAnimalCrossingIsland(ctx)
+		if err != nil {
+			logrus.WithError(err).Error("GetAnimalCrossingIsland")
+			continue
+		}
+		if int(island.Timezone) == 0 {
+			island.Timezone = storage.Timezone(8 * 3600)
+			island.LastPrice = storage.PriceHistory{}
+		}
+		var weekStartDateUTC = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
+		var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 0, 0, 0, 0, island.Timezone.Location())
+		var weekStartDate = weekStartDateLoc.UTC()
+		var weekEndDate = weekStartDate.AddDate(0, 0, 7)
+		wph, err := storage.GetWeeklyDTCPriceHistory(ctx, u.ID, weekStartDate, weekEndDate)
+		if err != nil {
+			logrus.WithError(err).WithFields(logrus.Fields{"uid": u.ID}).Error("GetWeeklyDTCPriceHistory")
+			continue
+		}
+		if err = storage.DeleteCollection(ctx, client, client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", u.ID)), 10); err != nil {
+			logrus.WithError(err).WithFields(logrus.Fields{"uid": u.ID}).Error("delete priceHistory")
+			continue
+		}
+		var lastph *storage.PriceHistory
+		if l := len(wph); l > 3 {
+			wph = wph[l-3 : 3]
+		}
+		for i, ph := range wph {
+			if i >= 3 {
+				break
+			}
+			ph.Timezone = island.Timezone
+			if i == 0 {
+				ph.Date = weekStartDate
+				weekStartDate = weekStartDate.AddDate(0, 0, 1)
+			} else if i%2 == 1 {
+				weekStartDate = weekStartDate.Add(8 * time.Hour)
+				ph.Date = weekStartDate
+			} else {
+				weekStartDate = weekStartDate.Add(4 * time.Hour)
+				ph.Date = weekStartDate
+				weekStartDate = weekStartDate.Add(12 * time.Hour)
+			}
+			lastph = ph
+			if err = ph.Set(ctx, u.ID); err != nil {
+				logrus.WithError(err).WithFields(logrus.Fields{"uid": u.ID}).Error("update default island")
+				continue
 			}
 		}
-		for gid := range groupIDs {
-			var chatmember tgbotapi.ChatMember
-			chatmember, err = tgbot.GetChatMember(tgbotapi.ChatConfigWithUser{ChatID: gid, UserID: u.ID})
-			if err != nil {
-				logrus.WithError(err).WithFields(logrus.Fields{
-					"uid":           u.ID,
-					"user_groupids": u.GroupIDs,
-					"gid":           gid,
-				}).Warn("error when get chat member")
-				continue
-			}
-			if chatmember.HasLeft() || !(chatmember.IsMember() || chatmember.IsCreator() || chatmember.IsAdministrator()) {
-				logrus.WithFields(logrus.Fields{
-					"uid":           u.ID,
-					"name":          u.Name,
-					"user_groupids": u.GroupIDs,
-					"gid":           gid,
-				}).Debug("用户不在群")
-				ctx := context.Background()
-				if err := storage.RemoveGroupIDFromUserGroupIDs(ctx, message.From.ID, gid); err != nil {
-					logrus.WithError(err).Error("remove groupid from user's groupids failed")
-				}
-				continue
-			} else {
-				if lerr := storage.AddGroupIDToUserGroupIDs(ctx, message.From.ID, gid); lerr != nil {
-					logrus.WithError(err).Error("add groupid to user's groupids failed")
-				}
-			}
+		if lastph != nil {
+			island.LastPrice = *lastph
+		}
+		if err = island.Update(ctx); err != nil {
+			logrus.WithError(err).WithFields(logrus.Fields{"uid": u.ID}).Error("update default island")
+			continue
 		}
 	}
 

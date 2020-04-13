@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"cloud.google.com/go/firestore"
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
@@ -460,12 +461,22 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 			ReplyText: "查找报价信息时出错狸",
 		}
 	}
-	if priceHistory == nil {
-		logrus.Error("priceHistory == nil")
-	}
-	if len(priceHistory) == 0 {
-		copy(priceHistory, prices)
-	} else {
+	if priceHistory != nil && len(priceHistory) > 0 {
+		client, err := firestore.NewClient(ctx, _projectID)
+		if err != nil {
+			logrus.WithError(err).Error("cmdDTCWeekPriceAndPredict")
+			return nil, Error{InnerError: err,
+				ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
+			}
+		}
+		defer client.Close()
+		col := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid))
+		if err = storage.DeleteCollection(ctx, client, col, 10); err != nil {
+			logrus.WithError(err).Error("cmdDTCWeekPriceAndPredict")
+			return nil, Error{InnerError: err,
+				ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
+			}
+		}
 		if l := len(prices); prices != nil || l > 0 {
 			var i, j int = 0, 0
 			for ; i < l; i++ {
@@ -477,16 +488,17 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 							ophd.Hour() < 12) ||
 							(nphd.Hour() >= 12 && nphd.Hour() < 21 &&
 								ophd.Hour() >= 12)) {
-						priceHistory[j].Delete(ctx)
+						priceHistory[j] = prices[i]
 					} else {
 						priceHistory = append(priceHistory, nil)
 						copy(priceHistory[j+1:], priceHistory[j:])
 					}
-					priceHistory[j] = prices[i]
 					j++
 				}
 			}
 		}
+	} else {
+		priceHistory = append(priceHistory, prices...)
 	}
 	for _, ph := range priceHistory {
 		if err = ph.Set(ctx, uid); err != nil {
@@ -506,7 +518,7 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
-				DisableNotification: false},
+				DisableNotification: true},
 			Text:      replyText,
 			ParseMode: "MarkdownV2",
 		}},
@@ -545,15 +557,15 @@ func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, en
 	}
 	for i := 0; i < len(intPrice); i++ {
 		if i == 0 {
-			priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i]})
+			priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i], Timezone: islandTimezone})
 			startDate = startDate.AddDate(0, 0, 1)
 		} else {
 			if i%2 == 1 {
 				startDate = startDate.Add(8 * time.Hour)
-				priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i]})
+				priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i], Timezone: islandTimezone})
 			} else {
 				startDate = startDate.Add(4 * time.Hour)
-				priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i]})
+				priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i], Timezone: islandTimezone})
 				startDate = startDate.Add(12 * time.Hour)
 			}
 		}
@@ -569,10 +581,10 @@ func formatWeekPrices(priceHistory []*storage.PriceHistory) (text string, err er
 	var weekPrices []string = []string{"\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-"}
 	for _, p := range priceHistory {
 		if p != nil {
-			var j = int(p.Date.Weekday())
+			var j = int(p.LocationDateTime().Weekday())
 			if j == 0 {
 				weekPrices[j] = strconv.Itoa(p.Price)
-			} else if p.Date.Hour() < 12 {
+			} else if p.LocationDateTime().Hour() < 12 {
 				weekPrices[j*2-1] = strconv.Itoa(p.Price)
 			} else {
 				weekPrices[j*2] = strconv.Itoa(p.Price)
@@ -758,7 +770,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 		groupID := message.Chat.ID
 		u, err := storage.GetUser(ctx, message.ReplyToMessage.From.ID, groupID)
 		if err != nil {
-			if status.Code(err)==codes.NotFound {
+			if status.Code(err) == codes.NotFound {
 				return nil, Error{InnerError: err,
 					ReplyText: "没有找岛狸",
 				}

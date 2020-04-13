@@ -125,7 +125,7 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 
 	// admin
 	router.HandleFunc("importDATA", cmdImportData)
-	router.HandleFunc("updateGroupInfo", cmdUpdateGroupInfo)
+	router.HandleFunc("updatetimezone", cmdUpgradeData)
 	router.HandleFunc("fclistall", cmdListAllFriendCodes)
 	router.HandleFunc("debug", cmdToggleDebugMode)
 

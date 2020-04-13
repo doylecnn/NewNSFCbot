@@ -184,13 +184,14 @@ func (w Web) export(c *gin.Context) {
 						var games []game
 						if axi, err := u.GetAnimalCrossingIsland(ctx); err == nil {
 							if axi != nil {
-								var pricehistory map[int64]map[string]int64 = map[int64]map[string]int64{}
+								var pricehistory map[int64]map[string]interface{} = map[int64]map[string]interface{}{}
 								if ph, err := storage.GetPriceHistory(ctx, int(u.ID)); err == nil {
 									for _, p := range ph {
-										pricehistory[p.Date.Unix()] = map[string]int64{
-											"date":     p.Date.Unix(),
-											"price":    int64(p.Price),
-											"timezone": int64(p.Timezone),
+										pricehistory[p.Date.Unix()] = map[string]interface{}{
+											"date":      p.Date.Format("2006-01-02 15:04:05 -0700"),
+											"price":     int(p.Price),
+											"timezone":  p.Timezone.String(),
+											"dateInLoc": p.LocationDateTime().Format("2006-01-02 15:04:05 -0700"),
 										}
 									}
 								}
@@ -198,7 +199,7 @@ func (w Web) export(c *gin.Context) {
 									Info: map[string]interface{}{
 										"airportIsOpen":  axi.AirportIsOpen,
 										"islandBaseInfo": axi.BaseInfo,
-										"timezone":       axi.Timezone,
+										"timezone":       axi.Timezone.String(),
 										"info":           axi.Info,
 										"fruits":         axi.Fruits,
 										"hemisphere":     axi.Hemisphere,
