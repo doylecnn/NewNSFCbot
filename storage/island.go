@@ -18,6 +18,11 @@ import (
 //Timezone timezone
 type Timezone int
 
+// Location return *time.Location
+func (t Timezone) Location() *time.Location {
+	return time.FixedZone(t.String(), int(t))
+}
+
 func (t Timezone) String() string {
 	h := t / 3600
 	sign := "-"
@@ -184,14 +189,14 @@ func (p PriceHistory) Delete(ctx context.Context) (err error) {
 	return
 }
 
-//DateTime get location datetime
-func (p PriceHistory) DateTime() (datetime time.Time) {
+//LocationDateTime get location datetime
+func (p PriceHistory) LocationDateTime() (datetime time.Time) {
 	var loc *time.Location
 	if p.Timezone == 0 {
 		p.Timezone = Timezone(8 * 3600)
-		loc = time.FixedZone("+0800", int(p.Timezone))
+		loc = p.Timezone.Location()
 	} else {
-		loc = time.FixedZone(p.Timezone.String(), int(p.Timezone))
+		loc = p.Timezone.Location()
 	}
 	datetime = p.Date.In(loc)
 	return
@@ -213,7 +218,7 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 	}
 	now := time.Now()
 	if island.Timezone != 0 {
-		islandLoc := time.FixedZone(island.Timezone.String(), int(island.Timezone))
+		islandLoc := island.Timezone.Location()
 		loc := now.In(islandLoc)
 		if loc.Hour() >= 8 && loc.Hour() < 12 {
 			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 8, 0, 0, 0, islandLoc).UTC()
@@ -228,8 +233,8 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 		return
 	}
 	if lp != nil {
-		lpd := lp.DateTime()
-		pd := priceHistory.DateTime()
+		lpd := lp.LocationDateTime()
+		pd := priceHistory.LocationDateTime()
 		if lpd.Day() == pd.Day() && ((lpd.Hour() >= 8 && lpd.Hour() < 12 && pd.Hour() == 8) || (lpd.Hour() >= 12 && lpd.Hour() < 22 && pd.Hour() == 12)) {
 			if err = lp.Delete(ctx); err != nil {
 				logrus.WithError(err).Error("Delete old price")

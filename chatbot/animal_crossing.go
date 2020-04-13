@@ -426,48 +426,72 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 // cmdDTCWeekPriceAndPredict 当周菜价回看/预测
 func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	args := strings.TrimSpace(message.CommandArguments())
+	uid := message.From.ID
+	ctx := context.Background()
+	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, Error{InnerError: err,
+				ReplyText: "请先登记你的岛屿狸。\n本bot 原本是为交换Nintendo Switch Friend Code而生。\n所以建议先/addfc 登记fc，再/addisland 登记岛屿，再/dtcj 发布价格。\n也可以先不添加FC 只添加岛屿信息。\n具体命令帮助请/help",
+			}
+		}
+		return nil, Error{InnerError: err,
+			ReplyText: "查找您的岛屿信息时出错狸",
+		}
+	}
 	var prices []*storage.PriceHistory
-	var weekStartDate = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
+	var weekStartDateUTC = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
+	var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 0, 0, 0, 0, island.Timezone.Location())
+	var weekStartDate = weekStartDateLoc.UTC()
 	var weekEndDate = weekStartDate.AddDate(0, 0, 7)
 	if len(args) != 0 {
-		prices, err = makeWeeklyPrice(strings.TrimSpace(message.CommandArguments()), weekStartDate, weekEndDate)
+		prices, err = makeWeeklyPrice(strings.TrimSpace(message.CommandArguments()), island.Timezone, weekStartDate, weekEndDate)
 		if err != nil {
 			return nil, Error{InnerError: err,
 				ReplyText: "更新一周报价时出错狸，请确认格式：\n[买入价] [上午价/下午价]……\n价格范围[1, 999]",
 			}
 		}
 	}
-	uid := message.From.ID
-	ctx := context.Background()
 	priceHistory, err := storage.GetWeeklyDTCPriceHistory(ctx, uid, weekStartDate, weekEndDate)
 	if err != nil {
-		if "Not found game: animal_crossing" == err.Error() {
-			return nil, Error{InnerError: err,
-				ReplyText: "请先登记你的岛屿狸。\n本bot 原本是为交换Nintendo Switch Friend Code而生。\n所以建议先/addfc 登记fc，再/addisland 登记岛屿，再/dtcj 发布价格。\n也可以先不添加FC 只添加岛屿信息。\n具体命令帮助请/help",
-			}
-		}
+		logrus.WithError(err).Error("GetWeeklyDTCPriceHistory")
 		return nil, Error{InnerError: err,
 			ReplyText: "查找报价信息时出错狸",
 		}
 	}
-	if l := len(prices); prices != nil || l > 0 {
-		var i, j int = 0, 0
-		for ; i < l; i++ {
-			if j < len(priceHistory) {
-				phd := priceHistory[j].DateTime()
-				if prices[i].Date.Weekday() == phd.Weekday() &&
-					((prices[i].Date.Hour() >= 8 && prices[i].Date.Hour() < 12 &&
-						phd.Hour() < 12) ||
-						(prices[i].Date.Hour() >= 12 && prices[i].Date.Hour() < 21 &&
-							phd.Hour() >= 12)) {
-					priceHistory[j].Delete(ctx)
-				} else {
-					priceHistory = append(priceHistory, nil)
-					copy(priceHistory[j+1:], priceHistory[j:])
+	if priceHistory == nil {
+		logrus.Error("priceHistory == nil")
+	}
+	if len(priceHistory) == 0 {
+		copy(priceHistory, prices)
+	} else {
+		if l := len(prices); prices != nil || l > 0 {
+			var i, j int = 0, 0
+			for ; i < l; i++ {
+				if j < len(priceHistory) {
+					ophd := priceHistory[j].LocationDateTime()
+					nphd := prices[i].LocationDateTime()
+					if nphd.Weekday() == ophd.Weekday() &&
+						((nphd.Hour() >= 8 && nphd.Hour() < 12 &&
+							ophd.Hour() < 12) ||
+							(nphd.Hour() >= 12 && nphd.Hour() < 21 &&
+								ophd.Hour() >= 12)) {
+						priceHistory[j].Delete(ctx)
+					} else {
+						priceHistory = append(priceHistory, nil)
+						copy(priceHistory[j+1:], priceHistory[j:])
+					}
+					priceHistory[j] = prices[i]
+					j++
 				}
-				priceHistory[j] = prices[i]
-				prices[i].Set(ctx, uid)
-				j++
+			}
+		}
+	}
+	for _, ph := range priceHistory {
+		if err = ph.Set(ctx, uid); err != nil {
+			logrus.WithError(err).Error("set price history")
+			return nil, Error{InnerError: err,
+				ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
 			}
 		}
 	}
@@ -488,7 +512,7 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 		nil
 }
 
-func makeWeeklyPrice(args string, startDate, endDate time.Time) (priceHistory []*storage.PriceHistory, err error) {
+func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, endDate time.Time) (priceHistory []*storage.PriceHistory, err error) {
 	prices := strings.Split(strings.Trim(args, "/"), " ")
 	if len(prices) < 1 || len(prices) > 7 {
 		return nil, errors.New("wrong format")
@@ -521,13 +545,16 @@ func makeWeeklyPrice(args string, startDate, endDate time.Time) (priceHistory []
 	for i := 0; i < len(intPrice); i++ {
 		if i == 0 {
 			priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i]})
+			startDate = startDate.AddDate(0, 0, 1)
 		} else {
 			if i%2 == 1 {
-				startDate = startDate.AddDate(0, 0, 1).Truncate(24 * time.Hour).Add(8 * time.Hour)
+				startDate = startDate.Add(8 * time.Hour)
+				priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i]})
 			} else {
 				startDate = startDate.Add(4 * time.Hour)
+				priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i]})
+				startDate = startDate.Add(12 * time.Hour)
 			}
-			priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i]})
 		}
 	}
 	return
