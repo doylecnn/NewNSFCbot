@@ -185,11 +185,12 @@ func (w Web) export(c *gin.Context) {
 						if axi, err := u.GetAnimalCrossingIsland(ctx); err == nil {
 							if axi != nil {
 								var pricehistory map[int64]map[string]int64 = map[int64]map[string]int64{}
-								if ph, err := storage.GetPriceHistory(ctx, int(uid)); err == nil {
+								if ph, err := storage.GetPriceHistory(ctx, int(u.ID)); err == nil {
 									for _, p := range ph {
 										pricehistory[p.Date.Unix()] = map[string]int64{
-											"date":  p.Date.Unix(),
-											"price": int64(p.Price),
+											"date":     p.Date.Unix(),
+											"price":    int64(p.Price),
+											"timezone": int64(p.Timezone),
 										}
 									}
 								}
