@@ -481,7 +481,7 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
-				DisableNotification: true},
+				DisableNotification: false},
 			Text:      replyText,
 			ParseMode: "MarkdownV2",
 		}},
@@ -556,9 +556,9 @@ func formatWeekPrices(priceHistory []*storage.PriceHistory) (text string, err er
 	for i := 1; i < 13; i += 2 {
 		datePrice[(i+1)/2] = fmt.Sprintf("%s/%s", weekPrices[i], weekPrices[i+1])
 	}
-	return fmt.Sprintf("本周您的报价如下: 可以 [点我](https://%s/ACNH_Turnip_Calculator/?filters=%s) 查询本周价格趋势\n"+
+	return fmt.Sprintf("本周您的报价如下: 可以 [点我](https://ac-turnip.com/#%s) 查询本周价格趋势\n"+
 		"\\| Sun \\| Mon \\| Tue \\| Wed \\| Thu \\| Fri \\| Sat \\|\n"+
-		"\\| %s \\|", _domain, strings.Join(weekPrices, "&filters="), strings.Join(datePrice, " \\| ")), nil
+		"\\| %s \\|", strings.TrimRight(strings.Join(weekPrices, ","), ",\\-"), strings.Join(datePrice, " \\| ")), nil
 }
 
 func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
