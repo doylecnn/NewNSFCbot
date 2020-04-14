@@ -629,6 +629,9 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 		if err != nil || island == nil {
 			continue
 		}
+		if island.LastPrice.Price <= 0 || island.LastPrice.Price > 999 {
+			continue
+		}
 		var h = island.LastPrice.LocationDateTime().Hour()
 		if h > 8 && h < 12 && time.Since(island.LastPrice.Date) > 4*time.Hour {
 			continue

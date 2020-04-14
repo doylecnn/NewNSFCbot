@@ -48,7 +48,7 @@ type Island struct {
 	Info             string       `firestore:"Info"`
 	Timezone         Timezone     `filestore:"timezone"`
 	Fruits           []string     `firestore:"Fruits,omitempty"`
-	LastPrice        PriceHistory `firestore:"LastPrice"`
+	LastPrice        PriceHistory `firestore:"LastPrice,omitempty"`
 	Owner            string       `firestore:"owner,omitempty"`
 	OwnerInsensitive string       `firestore:"owner_insensitive,omitempty"`
 }
