@@ -76,59 +76,9 @@ func cmdUpgradeData(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	}
 	defer client.Close()
 	for _, u := range users {
-		island, err := u.GetAnimalCrossingIsland(ctx)
+		_, err := u.GetAnimalCrossingIsland(ctx)
 		if err != nil {
 			logrus.WithError(err).Error("GetAnimalCrossingIsland")
-			continue
-		}
-		if int(island.Timezone) == 0 {
-			island.Timezone = storage.Timezone(8 * 3600)
-			island.LastPrice = storage.PriceHistory{}
-		}
-		var weekStartDateUTC = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
-		var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 0, 0, 0, 0, island.Timezone.Location())
-		var weekStartDate = weekStartDateLoc.UTC()
-		var weekEndDate = weekStartDate.AddDate(0, 0, 7)
-		wph, err := storage.GetWeeklyDTCPriceHistory(ctx, u.ID, weekStartDate, weekEndDate)
-		if err != nil {
-			logrus.WithError(err).WithFields(logrus.Fields{"uid": u.ID}).Error("GetWeeklyDTCPriceHistory")
-			continue
-		}
-		if err = storage.DeleteCollection(ctx, client, client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", u.ID)), 10); err != nil {
-			logrus.WithError(err).WithFields(logrus.Fields{"uid": u.ID}).Error("delete priceHistory")
-			continue
-		}
-		var lastph *storage.PriceHistory
-		if l := len(wph); l > 3 {
-			wph = wph[l-3 : 3]
-		}
-		for i, ph := range wph {
-			if i >= 3 {
-				break
-			}
-			ph.Timezone = island.Timezone
-			if i == 0 {
-				ph.Date = weekStartDate
-				weekStartDate = weekStartDate.AddDate(0, 0, 1)
-			} else if i%2 == 1 {
-				weekStartDate = weekStartDate.Add(8 * time.Hour)
-				ph.Date = weekStartDate
-			} else {
-				weekStartDate = weekStartDate.Add(4 * time.Hour)
-				ph.Date = weekStartDate
-				weekStartDate = weekStartDate.Add(12 * time.Hour)
-			}
-			lastph = ph
-			if err = ph.Set(ctx, u.ID); err != nil {
-				logrus.WithError(err).WithFields(logrus.Fields{"uid": u.ID}).Error("update default island")
-				continue
-			}
-		}
-		if lastph != nil {
-			island.LastPrice = *lastph
-		}
-		if err = island.Update(ctx); err != nil {
-			logrus.WithError(err).WithFields(logrus.Fields{"uid": u.ID}).Error("update default island")
 			continue
 		}
 	}

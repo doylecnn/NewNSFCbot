@@ -633,10 +633,13 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 			continue
 		}
 		var h = island.LastPrice.LocationDateTime().Hour()
-		if h > 8 && h < 12 && time.Since(island.LastPrice.Date) > 4*time.Hour {
+		if time.Since(island.LastPrice.Date) > 12*time.Hour {
 			continue
-		}
-		if h >= 12 && h < 22 && time.Since(island.LastPrice.Date) > 10*time.Hour {
+		} else if h >= 8 && h < 12 && time.Since(island.LastPrice.Date) > 4*time.Hour {
+			continue
+		} else if h >= 12 && h < 22 && time.Since(island.LastPrice.Date) > 10*time.Hour {
+			continue
+		} else if h >= 0 && h < 8 || h >= 22 && h < 24 {
 			continue
 		}
 		if !strings.HasSuffix(island.Name, "岛") {
@@ -675,18 +678,16 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 	}
 
 	var dtcPrices []string
-	for _, u := range topPrices {
+	for i, u := range topPrices {
 		if u != nil {
-			dtcPrices = append(dtcPrices, fmt.Sprintf("%s的岛：%s 上的菜价：%d", u.Name, u.Island.Name, u.Island.LastPrice.Price))
+			dtcPrices = append(dtcPrices, formatIslandDTCPrice(u, i+1))
 		}
 	}
 
-	replyText := fmt.Sprintf("今日高价（前 %d）：\n%s", count, strings.Join(dtcPrices, "\n"))
+	replyText := fmt.Sprintf("*今日高价（前 %d）：*\n%s", count, strings.Join(dtcPrices, "\n"))
 
 	if l > count {
-		var lowestPrice = priceUsers[len(priceUsers)-1]
-		dtcLowsetPrices := fmt.Sprintf("%s的岛：%s 上的菜价：%d", lowestPrice.Name, lowestPrice.Island.Name, lowestPrice.Island.LastPrice.Price)
-		replyText += "\n今日最低：\n" + dtcLowsetPrices
+		replyText += "\n*今日最低：*\n" + formatIslandDTCPrice(priceUsers[l-1], l)
 	}
 
 	return []*tgbotapi.MessageConfig{{
@@ -694,8 +695,33 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
-			Text: replyText}},
+			Text:      strings.ReplaceAll(replyText, "-", "\\-"),
+			ParseMode: "MarkdownV2",
+		}},
 		nil
+}
+
+func formatIslandDTCPrice(user *storage.User, index int) string {
+	if !strings.HasSuffix(user.Island.Name, "岛") {
+		user.Island.Name += "岛"
+	}
+	var priceTimeout int // minutes
+	var timeoutOrCloseDoor string
+	{
+		d := user.Island.LastPrice.LocationDateTime()
+		H := d.Hour()
+		var HH int = 0
+		if H >= 8 && H < 12 {
+			HH = 12
+			timeoutOrCloseDoor = "失效"
+		} else if H >= 12 && H < 22 {
+			HH = 22
+			timeoutOrCloseDoor = "关店"
+		}
+		shift := time.Date(d.Year(), d.Month(), d.Day(), HH, 0, 0, 0, user.Island.LastPrice.Timezone.Location())
+		priceTimeout = int(shift.UTC().Sub(time.Now()).Minutes())
+	}
+	return fmt.Sprintf("%d\\. *%s*的 *%s* 菜价：*%d*，*%d* 分钟后*%s*。", index, user.Name, user.Island.Name, user.Island.LastPrice.Price, priceTimeout, timeoutOrCloseDoor)
 }
 
 func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {

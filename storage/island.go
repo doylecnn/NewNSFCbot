@@ -20,7 +20,10 @@ type Timezone int
 
 // Location return *time.Location
 func (t Timezone) Location() *time.Location {
-	return time.FixedZone(t.String(), int(t))
+	if t != 0 {
+		return time.FixedZone(t.String(), int(t))
+	}
+	return time.UTC
 }
 
 func (t Timezone) String() string {
@@ -63,7 +66,9 @@ func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Isla
 	var islandDocPath = fmt.Sprintf("users/%d/games/animal_crossing", uid)
 	dsnap, err := client.Doc(islandDocPath).Get(ctx)
 	if err != nil {
-		logrus.Warnf("failed when get island: %v", err)
+		if status.Code(err) != codes.NotFound {
+			logrus.Warnf("failed when get island: %v", err)
+		}
 		return nil, err
 	}
 	island = &Island{}
@@ -71,8 +76,16 @@ func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Isla
 		return
 	}
 	island.Path = islandDocPath
+	needUpdate := false
 	if math.Abs(float64(island.Timezone)) > 1000000000.0 {
 		island.Timezone /= 1000000000
+		needUpdate = true
+	}
+	if math.Abs(float64(island.LastPrice.Timezone)) > 1000000000.0 {
+		island.LastPrice.Timezone /= 1000000000
+		needUpdate = true
+	}
+	if needUpdate {
 		island.Update(ctx)
 	}
 	return

@@ -276,7 +276,9 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				replyMessages, err := c.Route.Run(message)
 				var sentMessageIDs []int
 				if err != nil {
-					logrus.Warnf("%s", err.InnerError)
+					if status.Code(err.InnerError) != codes.NotFound {
+						logrus.Warnf("%s", err.InnerError)
+					}
 					if len(err.ReplyText) > 0 {
 						replyMessage := tgbotapi.MessageConfig{
 							BaseChat: tgbotapi.BaseChat{

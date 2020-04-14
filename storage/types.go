@@ -111,9 +111,7 @@ func GetUser(ctx context.Context, userID int, groupID int64) (user *User, err er
 
 	dsnap, err := client.Doc(fmt.Sprintf("users/%d", userID)).Get(ctx)
 	if err != nil {
-		if err != nil && status.Code(err) == codes.NotFound {
-			logrus.Warnf("Not found userID: %d", userID)
-		} else {
+		if err != nil && status.Code(err) != codes.NotFound {
 			logrus.Warnf("Failed when get user: %v", err)
 		}
 		return nil, err
@@ -270,7 +268,9 @@ func (u *User) GetAnimalCrossingIsland(ctx context.Context) (island *Island, err
 
 	island, err = GetAnimalCrossingIslandByUserID(ctx, u.ID)
 	if err != nil {
-		logrus.Warnf("failed when get island: %v", err)
+		if status.Code(err) != codes.NotFound {
+			logrus.Warnf("failed when get island: %v", err)
+		}
 		return nil, err
 	}
 	return
@@ -540,9 +540,7 @@ func GetGroup(ctx context.Context, groupID int64) (group Group, err error) {
 
 	dsnap, err := client.Doc(fmt.Sprintf("groups/%d", groupID)).Get(ctx)
 	if err != nil && status.Code(err) != codes.NotFound {
-		if status.Code(err) == codes.NotFound {
-			logrus.Warnf("Not found group: %d", groupID)
-		} else {
+		if status.Code(err) != codes.NotFound {
 			logrus.Warnf("Failed when get group: %v", err)
 		}
 		return
