@@ -291,7 +291,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 								sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
 								cacheForEdit.Add(key, sentMessageIDs)
 							}
-							if !message.Chat.IsPrivate() {
+							if !message.Chat.IsPrivate() && message.Command() != "open" {
 								sentMsgs = append(sentMsgs, sentMessage{ChatID: message.Chat.ID, MsgID: sentM.MessageID, Time: sentM.Time()})
 							}
 						}
@@ -333,7 +333,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 											if cacheForEdit != nil {
 												sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
 											}
-											if !message.Chat.IsPrivate() {
+											if !message.Chat.IsPrivate() && message.Command() != "open" {
 												sentMsgs = append(sentMsgs, sentMessage{ChatID: message.Chat.ID, MsgID: sentM.MessageID, Time: sentM.Time()})
 											}
 										}
@@ -346,7 +346,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 										if cacheForEdit != nil {
 											sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
 										}
-										if !message.Chat.IsPrivate() {
+										if !message.Chat.IsPrivate() && message.Command() != "open" {
 											sentMsgs = append(sentMsgs, sentMessage{ChatID: message.Chat.ID, MsgID: sentM.MessageID, Time: sentM.Time()})
 										}
 									}
