@@ -211,7 +211,7 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 		loc := now.In(islandLoc)
 		if loc.Hour() >= 8 && loc.Hour() < 12 {
 			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 8, 0, 0, 0, islandLoc).UTC()
-		} else if loc.Hour() >= 12 && loc.Hour() < 22 {
+		} else if loc.Hour() >= 12 {
 			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 12, 0, 0, 0, islandLoc).UTC()
 		}
 	}

@@ -526,9 +526,11 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
-				DisableNotification: true},
-			Text:      replyText,
-			ParseMode: "MarkdownV2",
+				DisableNotification: true,
+			},
+			Text:                  replyText,
+			ParseMode:             "MarkdownV2",
+			DisableWebPagePreview: true,
 		}},
 		nil
 }
@@ -627,7 +629,11 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 		if err != nil || island == nil {
 			continue
 		}
-		if time.Since(island.LastPrice.Date) > 12*time.Hour {
+		var h = island.LastPrice.LocationDateTime().Hour()
+		if h > 8 && h < 12 && time.Since(island.LastPrice.Date) > 4*time.Hour {
+			continue
+		}
+		if h >= 12 && h < 22 && time.Since(island.LastPrice.Date) > 10*time.Hour {
 			continue
 		}
 		if !strings.HasSuffix(island.Name, "岛") {
@@ -650,23 +656,31 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 		return priceUsers[i].Island.LastPrice.Price > priceUsers[j].Island.LastPrice.Price
 	})
 
-	var top10Price []*storage.User
-	if len(priceUsers) > 10 {
-		top10Price = priceUsers[:10]
+	var topPrices []*storage.User
+	count := 5
+	l := len(priceUsers)
+	if l > count {
+		for i := count; i < l; i++ {
+			if priceUsers[i].Island.LastPrice.Price < 500 {
+				count = i
+				break
+			}
+		}
+		topPrices = priceUsers[:count]
 	} else {
-		top10Price = priceUsers
+		topPrices = priceUsers
 	}
 
 	var dtcPrices []string
-	for _, u := range top10Price {
+	for _, u := range topPrices {
 		if u != nil {
 			dtcPrices = append(dtcPrices, fmt.Sprintf("%s的岛：%s 上的菜价：%d", u.Name, u.Island.Name, u.Island.LastPrice.Price))
 		}
 	}
 
-	replyText := "今日高价（前十）：\n" + strings.Join(dtcPrices, "\n")
+	replyText := fmt.Sprintf("今日高价（前 %d）：\n%s", count, strings.Join(dtcPrices, "\n"))
 
-	if len(priceUsers) > 10 {
+	if l > count {
 		var lowestPrice = priceUsers[len(priceUsers)-1]
 		dtcLowsetPrices := fmt.Sprintf("%s的岛：%s 上的菜价：%d", lowestPrice.Name, lowestPrice.Island.Name, lowestPrice.Island.LastPrice.Price)
 		replyText += "\n今日最低：\n" + dtcLowsetPrices
