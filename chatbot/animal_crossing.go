@@ -317,6 +317,7 @@ func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 	if !island.AirportIsOpen || island.Info != islandInfo {
 		island.AirportIsOpen = true
 		island.Info = islandInfo
+		island.OpenTime = time.Now()
 		island.Update(ctx)
 	}
 	return []*tgbotapi.MessageConfig{{
@@ -804,7 +805,11 @@ func userInfo(users []*storage.User) (replyMessage string) {
 			if !strings.HasSuffix(u.Island.Name, "岛") {
 				u.Island.Name += "岛"
 			}
-			rst = append(rst, "岛屿："+u.Island.Name)
+			if u.Island.AirportIsOpen {
+				rst = append(rst, fmt.Sprintf("岛屿：%s。现正开放，已开放：%d 分钟。\n本会开放特别信息：%s", u.Island.Name, int(time.Since(u.Island.OpenTime).Minutes()), u.Island.Info))
+			} else {
+				rst = append(rst, "岛屿："+u.Island.Name)
+			}
 		}
 	}
 	return strings.Join(rst, "\n")

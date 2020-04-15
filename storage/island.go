@@ -47,6 +47,7 @@ type Island struct {
 	NameInsensitive  string       `firestore:"name_insensitive,omitempty"`
 	Hemisphere       int          `firestore:"hemisphere"`
 	AirportIsOpen    bool         `firestore:"AirportIsOpen"`
+	OpenTime         time.Time    `firestore:"OpenTime,omitempty"`
 	BaseInfo         string       `firestore:"BaseInfo"`
 	Info             string       `firestore:"Info"`
 	Timezone         Timezone     `filestore:"timezone"`
@@ -123,7 +124,7 @@ func (i Island) Update(ctx context.Context) (err error) {
 func (i Island) String() string {
 	var airportstatus string
 	if i.AirportIsOpen {
-		airportstatus = "现正开放"
+		airportstatus = fmt.Sprintf("现正开放：已开放 %d 分钟", int(time.Since(i.OpenTime).Minutes()))
 	} else {
 		airportstatus = "现已关闭"
 	}

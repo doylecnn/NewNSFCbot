@@ -80,6 +80,7 @@
                 <li class="airportstatus">机场状态：
                     {{if $u.Island.AirportIsOpen}}
                         <span class="name">正开放</span>
+                        <span class="name">已开放：[待修正]{{$u.Island.OpenTime}}</span>
                         {{if $u.Island.Info}}
                             <span>本回开放特色信息：</span><span class="name">{{$u.Island.Info}}</span>
                         {{end}}
@@ -91,11 +92,10 @@
                 {{if index $.priceOutDate $i}}
                     菜价已过时（超过12小时未更新）：
                 {{else}}
-                    最新菜价：
+                    最新菜价：<span class="name">{{$u.Island.LastPrice.Price}}铃钱/颗</span><span class="name" style="font-size: small;">({{$u.Island.LastPrice.Date}})</span></li>
                 {{end}}
-                <span class="name">{{$u.Island.LastPrice.Price}}铃钱/颗</span><span class="name" style="font-size: small;">({{$u.Island.LastPrice.Date}})</span></li>
                 <li>
-                    <span>基本信息:</span><span>{.island.BaseInfo}</span>
+                    <span>基本信息:</span><span>{{.island.BaseInfo}}</span>
                 </li>
         </div>
     </div>
