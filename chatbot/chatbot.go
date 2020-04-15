@@ -108,6 +108,9 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 			nil
 	})
 
+	// 仅占位用
+	router.HandleFunc("start", func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) { return })
+
 	router.HandleFunc("addfc", cmdAddFC)
 	router.HandleFunc("delfc", cmdDelFC)
 	router.HandleFunc("myfc", cmdMyFC)
@@ -130,8 +133,14 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 	router.HandleFunc("gj", cmdDTCMaxPriceInGroup)
 	router.HandleFunc("sac", cmdSearchAnimalCrossingInfo)
 	router.HandleFunc("ghs", cmdHuaShiJiaoHuanBiaoGe)
-
 	router.HandleFunc("whois", cmdWhois)
+
+	// queue
+	router.HandleFunc("queue", cmdOpenIslandQueue)
+	router.HandleFunc("next", cmdNextIslandQueue)
+	router.HandleFunc("join", cmdJoinIslandQueue)
+	router.HandleFunc("leave", cmdleaveIslandQueue)
+	router.HandleFunc("dismiss", cmdDismissIslandQueue)
 
 	// web login
 	router.HandleFunc("login", cmdWebLogin)
@@ -170,7 +179,7 @@ func (c ChatBot) SetWebhook() (err error) {
 		var wc = tgbotapi.NewWebhook(fmt.Sprintf("https://%s.appspot.com/%s", c.appID, c.token))
 		webhookConfig = WebhookConfig{WebhookConfig: wc}
 		webhookConfig.MaxConnections = 10
-		webhookConfig.AllowedUpdates = []string{"message", "edited_message", "inline_query"}
+		webhookConfig.AllowedUpdates = []string{"message", "edited_message", "inline_query", "callback_query"}
 		_, err = c.setWebhook(webhookConfig)
 		if err != nil {
 			logrus.WithError(err).Error("SetWebhook failed")
@@ -190,6 +199,7 @@ func (c ChatBot) MessageHandler(updates chan tgbotapi.Update) {
 func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 	for update := range updates {
 		inlineQuery := update.InlineQuery
+		callbackQuery := update.CallbackQuery
 		message := update.Message
 		var isEditedMessage bool = false
 		if message == nil {
@@ -210,6 +220,8 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 			} else {
 				c.TgBotClient.AnswerInlineQuery(*result)
 			}
+		} else if callbackQuery != nil {
+			logrus.Debug(callbackQuery)
 		} else if message != nil && message.IsCommand() {
 			if message.Chat.IsGroup() || message.Chat.IsSuperGroup() || message.Chat.IsPrivate() {
 				if len(sentMsgs) > 0 {
@@ -325,13 +337,13 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 										}
 										fm := tgbotapi.MessageConfig{
 											BaseChat: tgbotapi.BaseChat{
-												ChatID:           message.Chat.ID,
+												ChatID:           replyMessage.ChatID,
 												ReplyToMessageID: message.MessageID},
 											Text: replyMessage.Text[offset : offset+remain]}
 										sentM, err := c.TgBotClient.Send(fm)
 										if err != nil {
 											logrus.WithError(err).Error("send message failed")
-										} else {
+										} else if replyMessage.ChatID == message.Chat.ID && !message.Chat.IsPrivate() {
 											if cacheForEdit != nil {
 												sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
 											}
@@ -344,11 +356,11 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 									sentM, err := c.TgBotClient.Send(*replyMessage)
 									if err != nil {
 										logrus.WithError(err).Error("send message failed")
-									} else {
+									} else if replyMessage.ChatID == message.Chat.ID && !message.Chat.IsPrivate() {
 										if cacheForEdit != nil {
 											sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
 										}
-										if !message.Chat.IsPrivate() && message.Command() != "open" {
+										if message.Command() != "open" {
 											sentMsgs = append(sentMsgs, sentMessage{ChatID: message.Chat.ID, MsgID: sentM.MessageID, Time: sentM.Time()})
 										}
 									}

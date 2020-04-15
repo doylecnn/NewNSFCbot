@@ -50,6 +50,7 @@ type Island struct {
 	OpenTime         time.Time    `firestore:"OpenTime,omitempty"`
 	BaseInfo         string       `firestore:"BaseInfo"`
 	Info             string       `firestore:"Info"`
+	OnBoardQueueID   string       `firestore:"OnBoardQueueID"`
 	Timezone         Timezone     `filestore:"timezone"`
 	Fruits           []string     `firestore:"Fruits,omitempty"`
 	LastPrice        PriceHistory `firestore:"LastPrice,omitempty"`
@@ -121,6 +122,91 @@ func (i Island) Update(ctx context.Context) (err error) {
 	return
 }
 
+// CreateOnboardQueue create onboard island queue
+func (i *Island) CreateOnboardQueue(ctx context.Context, password string, maxGuestCount int) (queue *OnboardQueue, err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return
+	}
+	defer client.Close()
+
+	queue = &OnboardQueue{Name: i.Name, Password: password, MaxGuestCount: maxGuestCount}
+	err = client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		ref := client.Collection("onboardQueues").NewDoc()
+		queue.ID = ref.ID
+		if err = tx.Create(ref, queue); err != nil {
+			return err
+		}
+		islandRef := client.Doc(i.Path)
+		return tx.Set(islandRef, map[string]interface{}{
+			"OnBoardQueueID": queue.ID,
+			"OpenTime":       time.Now(),
+			"AirportIsOpen":  true,
+		})
+	})
+	if err != nil {
+		logrus.WithError(err).Info("An error has occurred when CreateOnboardQueue")
+	}
+	return
+}
+
+// GetOnboardQueue return a exists OnboardQueue
+func (i *Island) GetOnboardQueue(ctx context.Context) (queue *OnboardQueue, err error) {
+	if len(i.OnBoardQueueID) == 0 {
+		return nil, errors.New("NotFound")
+	}
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return
+	}
+	defer client.Close()
+	return GetOnboardQueue(ctx, client, i.OnBoardQueueID)
+}
+
+// ClearOldOnboardQueue clean old onboard island queue
+func (i *Island) ClearOldOnboardQueue(ctx context.Context) (queue *OnboardQueue, err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return
+	}
+	defer client.Close()
+
+	queue = &OnboardQueue{}
+
+	err = client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		if len(i.OnBoardQueueID) > 0 {
+			islandRef := client.Doc(i.Path)
+			ref := client.Doc("onboardQueues/" + i.OnBoardQueueID)
+			doc, err := tx.Get(ref)
+			if err != nil {
+				if status.Code(err) == codes.NotFound {
+					return tx.Set(islandRef, map[string]interface{}{
+						"OnBoardQueueID": "",
+					}, firestore.MergeAll)
+				}
+				return err
+			}
+			err = tx.Set(islandRef, map[string]interface{}{
+				"OnBoardQueueID": "",
+			})
+			if err != nil {
+				return err
+			}
+			err = doc.DataTo(queue)
+			if err != nil {
+				return err
+			}
+			queue.Dismissed = true
+			return tx.Delete(ref)
+		}
+		return err
+	})
+	if err != nil {
+		logrus.WithError(err).Info("An error has occurred when ClearOldOnboardQueue")
+	}
+	return
+}
+
 func (i Island) String() string {
 	var airportstatus string
 	if i.AirportIsOpen {
@@ -143,9 +229,14 @@ func (i Island) String() string {
 			logrus.WithError(err).Error()
 		}
 	}
-	var text string = fmt.Sprintf("位于%s半球%s时区的岛屿：%s, 岛民代表：%s。 %s\n基本信息：%s", hemisphere, i.Timezone.String(), i.Name, i.Owner, airportstatus, i.BaseInfo)
-	if i.AirportIsOpen && len(i.Info) > 0 {
-		text += "\n\n本回开放特色信息：" + i.Info
+	var text string = fmt.Sprintf("位于%s半球%s时区的岛屿：%s, 岛民代表：%s。 %s\n基本信息：%s\n\n", hemisphere, i.Timezone.String(), i.Name, i.Owner, airportstatus, i.BaseInfo)
+	if i.AirportIsOpen {
+		if len(i.OnBoardQueueID) > 0 {
+			text += "本回通过密码才能访问：需要排队"
+		}
+		if len(i.Info) > 0 {
+			text += "本回开放特色信息：" + i.Info
+		}
 	}
 	return text
 }
