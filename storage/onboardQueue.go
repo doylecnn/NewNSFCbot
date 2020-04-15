@@ -88,10 +88,15 @@ func (q *OnboardQueue) Remove(ctx context.Context, client *firestore.Client, cha
 	if q.Dismissed {
 		return errors.New("queue has been dismissed")
 	}
+	var exists = false
 	for _, cid := range q.Queue {
 		if cid == chatID {
-			return errors.New("already in this queue")
+			exists = true
+			break
 		}
+	}
+	if !exists {
+		return errors.New("not join in this queue")
 	}
 	co := client.Doc("onboardQueues/" + q.ID)
 	_, err = co.Update(ctx, []firestore.Update{

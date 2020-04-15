@@ -142,7 +142,7 @@ func (i *Island) CreateOnboardQueue(ctx context.Context, password string, maxGue
 			"OnBoardQueueID": queue.ID,
 			"OpenTime":       time.Now(),
 			"AirportIsOpen":  true,
-		})
+		}, firestore.MergeAll)
 	})
 	if err != nil {
 		logrus.WithError(err).Info("An error has occurred when CreateOnboardQueue")
@@ -188,7 +188,7 @@ func (i *Island) ClearOldOnboardQueue(ctx context.Context) (queue *OnboardQueue,
 			}
 			err = tx.Set(islandRef, map[string]interface{}{
 				"OnBoardQueueID": "",
-			})
+			}, firestore.MergeAll)
 			if err != nil {
 				return err
 			}
@@ -316,7 +316,7 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 		loc := now.In(islandLoc)
 		if loc.Hour() >= 8 && loc.Hour() < 12 {
 			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 8, 0, 0, 0, islandLoc).UTC()
-		} else if loc.Hour() >= 12 {
+		} else if loc.Hour() < 8 || loc.Hour() >= 12 {
 			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 12, 0, 0, 0, islandLoc).UTC()
 		}
 	}
@@ -329,7 +329,7 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 	if lp != nil {
 		lpd := lp.LocationDateTime()
 		pd := priceHistory.LocationDateTime()
-		if lpd.Day() == pd.Day() && ((lpd.Hour() >= 8 && lpd.Hour() < 12 && pd.Hour() == 8) || (lpd.Hour() >= 12 && lpd.Hour() < 22 && pd.Hour() == 12)) {
+		if lpd.Day() == pd.Day() && ((lpd.Hour() >= 8 && lpd.Hour() < 12 && pd.Hour() == 8) || (lpd.Hour() >= 12 && lpd.Hour() < 8 && pd.Hour() == 12)) {
 			if err = lp.Delete(ctx); err != nil {
 				logrus.WithError(err).Error("Delete old price")
 				return

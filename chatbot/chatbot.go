@@ -139,7 +139,7 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 	router.HandleFunc("queue", cmdOpenIslandQueue)
 	router.HandleFunc("next", cmdNextIslandQueue)
 	router.HandleFunc("join", cmdJoinIslandQueue)
-	router.HandleFunc("leave", cmdleaveIslandQueue)
+	router.HandleFunc("leave", cmdLeaveIslandQueue)
 	router.HandleFunc("dismiss", cmdDismissIslandQueue)
 
 	// web login
@@ -208,20 +208,10 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				isEditedMessage = true
 			}
 		}
-		if inlineQuery != nil && inlineQuery.Query == "myfc" {
-			if result, err := inlineQueryMyFC(inlineQuery); err != nil {
-				logrus.Warn(err)
-			} else {
-				c.TgBotClient.AnswerInlineQuery(*result)
-			}
-		} else if inlineQuery != nil && inlineQuery.Query == "myisland" {
-			if result, err := inlineQueryMyIsland(inlineQuery); err != nil {
-				logrus.Warn(err)
-			} else {
-				c.TgBotClient.AnswerInlineQuery(*result)
-			}
+		if inlineQuery != nil {
+			c.HandleInlineQuery(inlineQuery)
 		} else if callbackQuery != nil {
-			logrus.Debug(callbackQuery)
+			c.HandleCallbackQuery(callbackQuery)
 		} else if message != nil && message.IsCommand() {
 			if message.Chat.IsGroup() || message.Chat.IsSuperGroup() || message.Chat.IsPrivate() {
 				if len(sentMsgs) > 0 {
