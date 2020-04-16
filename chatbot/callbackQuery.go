@@ -2,8 +2,10 @@ package chatbot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/firestore"
 	"github.com/doylecnn/new-nsfc-bot/storage"
@@ -21,9 +23,15 @@ func (c ChatBot) HandleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	if query.Data == "/queue" {
 		processed = true
 		result, err = callbackQueryStartQueue(query)
-	} else if strings.HasPrefix(query.Data, "/list_") {
+	} else if strings.HasPrefix(query.Data, "/updatepassword_") {
 		processed = true
-		result, err = callbackQueryListQueue(query)
+		result, err = callbackQueryUpdateQueuePassword(query)
+	} else if strings.HasPrefix(query.Data, "/showqueuemember_") {
+		processed = true
+		result, err = callbackQueryShowQueueMembers(query)
+	} else if strings.HasPrefix(query.Data, "/showqueueinfo_") {
+		processed = true
+		result, err = callbackQueryShowQueueInfo(query)
 	} else if strings.HasPrefix(query.Data, "/join_") {
 		processed = true
 		result, err = callbackQueryJoinQueue(query)
@@ -36,13 +44,21 @@ func (c ChatBot) HandleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	} else if strings.HasPrefix(query.Data, "/next_") {
 		processed = true
 		result, err = callbackQueryNextQueue(query)
+	} else if strings.HasPrefix(query.Data, "/coming_") {
+		processed = true
+		result, err = callbackQueryComing(query)
+	} else if strings.HasPrefix(query.Data, "/done_") || strings.HasPrefix(query.Data, "/sorry_") {
+		processed = true
+		result, err = callbackQueryDoneOrSorry(query)
 	} else if strings.HasPrefix(query.Data, "/dismiss_") {
 		processed = true
 		result, err = callbackQueryDismissQueue(query)
 	}
 	if processed {
 		if err != nil {
-			logrus.Warn(err)
+			if err.Error() != "no_alert" {
+				logrus.Warn(err)
+			}
 		} else {
 			c.TgBotClient.AnswerCallbackQuery(result)
 		}
@@ -54,7 +70,7 @@ func callbackQueryStartQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 		BaseChat: tgbotapi.BaseChat{
 			ChatID: int64(query.From.ID),
 		},
-		Text: "请使用指令 /queue [密码] [同时最大客人数] 创建队列\n创建完成后请分享到其它聊天中邀请大家排队。"})
+		Text: "请使用指令 /queue [密码] 创建队列\n创建完成后请分享到其它聊天中邀请大家排队。"})
 	if err != nil {
 		logrus.WithError(err).WithFields(logrus.Fields{"uid": query.From.ID,
 			"msgID": query.Message.MessageID}).Error("send message failed")
@@ -62,12 +78,12 @@ func callbackQueryStartQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 	return tgbotapi.CallbackConfig{
 		CallbackQueryID: query.ID,
 		Text:            "请与 @NS_FC_bot 私聊",
-		ShowAlert:       true,
+		ShowAlert:       false,
 	}, nil
 }
 
-func callbackQueryListQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
-	queueID := query.Data[6:]
+func callbackQueryUpdateQueuePassword(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
+	queueID := query.Data[16:]
 	uid := query.From.ID
 	ctx := context.Background()
 	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
@@ -76,7 +92,7 @@ func callbackQueryListQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 
@@ -85,7 +101,7 @@ func callbackQueryListQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "你不能操作别人的队列",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	queue, err := island.GetOnboardQueue(ctx)
@@ -94,14 +110,68 @@ func callbackQueryListQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
+		}, nil
+	}
+	if queue != nil && !queue.Dismissed {
+		_, err = tgbot.Send(&tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:      int64(query.From.ID),
+				ReplyMarkup: tgbotapi.ForceReply{ForceReply: true, Selective: true},
+			},
+			Text: "请输入新的密码",
+		})
+		if err != nil {
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "查找队列出错：" + err.Error(),
+				ShowAlert:       false,
+			}, nil
+		}
+		err = errors.New("no_alert")
+		return
+	}
+	return tgbotapi.CallbackConfig{
+		CallbackQueryID: query.ID,
+		Text:            "failed",
+		ShowAlert:       false,
+	}, nil
+}
+
+func callbackQueryShowQueueMembers(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
+	queueID := query.Data[17:]
+	ctx := context.Background()
+	client, err := firestore.NewClient(ctx, _projectID)
+	if err != nil {
+		logrus.WithError(err).Error("create new firestore client failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
+	if err != nil {
+		logrus.WithError(err).Error("query queue failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	if queue == nil || queue.Dismissed {
+		logrus.WithError(err).Error("query queue failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "此队列已取消",
+			ShowAlert:       false,
 		}, nil
 	}
 	if queue.Len() == 0 {
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "目前队列为空",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	var queueInfo []string
@@ -114,23 +184,39 @@ func callbackQueryListQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		}
 		queueInfo = append(queueInfo, name)
 	}
+	if len(queueInfo) == 0 {
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "目前队列为空",
+			ShowAlert:       false,
+		}, nil
+	}
+	replyText := strings.Join(queueInfo, "\n")
+	if len(replyText) == 0 {
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "目前队列为空",
+			ShowAlert:       false,
+		}, nil
+	}
 	_, err = tgbot.Send(&tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID: int64(query.From.ID),
 		},
-		Text: strings.Join(queueInfo, "\n"),
+		Text: replyText,
 	})
 	if err != nil {
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "列出队列出错：" + err.Error(),
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
+
 	return tgbotapi.CallbackConfig{
 		CallbackQueryID: query.ID,
 		Text:            "已列出队列",
-		ShowAlert:       true,
+		ShowAlert:       false,
 	}, nil
 }
 
@@ -144,7 +230,7 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
@@ -153,14 +239,14 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 			return tgbotapi.CallbackConfig{
 				CallbackQueryID: query.ID,
 				Text:            "success",
-				ShowAlert:       true,
+				ShowAlert:       false,
 			}, nil
 		}
 		logrus.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	if err = queue.Remove(ctx, client, int64(uid)); err != nil {
@@ -168,7 +254,7 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	_, err = tgbot.Send(tgbotapi.EditMessageTextConfig{
@@ -183,7 +269,7 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 	return tgbotapi.CallbackConfig{
 		CallbackQueryID: query.ID,
 		Text:            "成功离开队列",
-		ShowAlert:       true,
+		ShowAlert:       false,
 	}, nil
 }
 
@@ -197,7 +283,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 
@@ -210,7 +296,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "解散成功",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	if island.OnBoardQueueID != queueID {
@@ -218,7 +304,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "你不能操作别人的队列",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	queue, err := island.GetOnboardQueue(ctx)
@@ -227,7 +313,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	client, err := firestore.NewClient(ctx, _projectID)
@@ -236,7 +322,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	chatID, err := queue.Next(ctx, client)
@@ -245,35 +331,104 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 			return tgbotapi.CallbackConfig{
 				CallbackQueryID: query.ID,
 				Text:            "并没有下一位在等候的访客……",
-				ShowAlert:       true,
+				ShowAlert:       false,
 			}, nil
 		}
 		logrus.WithError(err).Error("append queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
+	var comingBtn = tgbotapi.NewInlineKeyboardButtonData("我来啦！"+queue.Name, "/coming_"+queue.ID)
+	var sorryBtn = tgbotapi.NewInlineKeyboardButtonData("抱歉来不了", "/sorry_"+queue.ID)
+	var doneBtn = tgbotapi.NewInlineKeyboardButtonData("我好了！", "/done_"+queue.ID)
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(comingBtn),
+		tgbotapi.NewInlineKeyboardRow(doneBtn),
+		tgbotapi.NewInlineKeyboardRow(sorryBtn))
 	_, err = tgbot.Send(&tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
-			ChatID: chatID,
+			ChatID:      chatID,
+			ReplyMarkup: replyMarkup,
 		},
-		Text: "轮到你了！如果不能前往，请务必和岛主联系！",
+		Text:      fmt.Sprintf("轮到你了！\n密码：*%s*\n如果不能前往，请务必和岛主联系！", queue.Password),
+		ParseMode: "MarkdownV2",
 	})
 	if err != nil {
 		logrus.WithError(err).Error("notify next failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 
 	return tgbotapi.CallbackConfig{
 		CallbackQueryID: query.ID,
 		Text:            "成功通知下一位访客",
-		ShowAlert:       true,
+		ShowAlert:       false,
+	}, nil
+}
+
+func callbackQueryShowQueueInfo(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
+	queueID := query.Data[15:]
+	uid := int64(query.From.ID)
+	username := query.From.UserName
+	if len(username) == 0 {
+		username = query.From.FirstName
+	}
+	ctx := context.Background()
+	client, err := firestore.NewClient(ctx, _projectID)
+	if err != nil {
+		logrus.WithError(err).Error("create firestore client failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "队列已取消",
+				ShowAlert:       false,
+			}, nil
+		}
+		logrus.WithError(err).Error("query queue failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	t := queue.Len()
+	l, err := queue.GetPosition(uid)
+	if err != nil {
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "您不在此队列中",
+			ShowAlert:       false,
+		}, nil
+	}
+	var leaveBtn = tgbotapi.NewInlineKeyboardButtonData("离开队列："+queue.Name, "/leave_"+queue.ID)
+	var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", "/position_"+queue.ID)
+	var listBtn = tgbotapi.NewInlineKeyboardButtonData("队列成员", "/showqueuemember_"+queue.ID)
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, listBtn, leaveBtn))
+	tgbot.Send(&tgbotapi.MessageConfig{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID:      uid,
+			ReplyMarkup: replyMarkup,
+		},
+		Text: fmt.Sprintf("正在队列：%s 中排队，当前位置：%d/%d", queue.Name, l+1, t),
+	})
+	return tgbotapi.CallbackConfig{
+		CallbackQueryID: query.ID,
+		Text:            "success",
+		ShowAlert:       false,
 	}, nil
 }
 
@@ -291,7 +446,7 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
@@ -300,21 +455,21 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 			return tgbotapi.CallbackConfig{
 				CallbackQueryID: query.ID,
 				Text:            "队列已取消",
-				ShowAlert:       true,
+				ShowAlert:       false,
 			}, nil
 		}
 		logrus.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	if queue.OwnerID == uid {
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "自己不用排自己的队伍狸……",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	if err = queue.Append(ctx, client, uid, username); err != nil {
@@ -322,31 +477,50 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 			return tgbotapi.CallbackConfig{
 				CallbackQueryID: query.ID,
 				Text:            "您已经加入了这个队列",
-				ShowAlert:       true,
+				ShowAlert:       false,
 			}, nil
 		}
 		logrus.WithError(err).Error("append queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
-	l := queue.Len()
+	t := queue.Len()
+	l, err := queue.GetPosition(uid)
+	if err != nil {
+		t++
+	}
 	var leaveBtn = tgbotapi.NewInlineKeyboardButtonData("离开队列："+queue.Name, "/leave_"+queue.ID)
 	var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", "/position_"+queue.ID)
-	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(leaveBtn, myPositionBtn))
+	var listBtn = tgbotapi.NewInlineKeyboardButtonData("队列成员", "/showqueuemember_"+queue.ID)
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, listBtn, leaveBtn))
 	tgbot.Send(&tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:      uid,
 			ReplyMarkup: replyMarkup,
 		},
-		Text: fmt.Sprintf("正在队列：%s 中排队，在我前面还有：%d 人", queue.Name, l),
+		Text: fmt.Sprintf("正在队列：%s 中排队，当前位置：%d/%d", queue.Name, l+1, t),
 	})
+	sentMsg, err := tgbot.Send(&tgbotapi.MessageConfig{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID: queue.OwnerID,
+		},
+		Text: fmt.Sprintf("@%s 加入了队列", username),
+	})
+	if err != nil {
+		logrus.WithError(err).Error("send msg failed")
+	} else {
+		go func() {
+			time.Sleep(55 * time.Second)
+			tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(sentMsg.Chat.ID, sentMsg.MessageID))
+		}()
+	}
 	return tgbotapi.CallbackConfig{
 		CallbackQueryID: query.ID,
-		Text:            "加入成功",
-		ShowAlert:       true,
+		Text:            "success",
+		ShowAlert:       false,
 	}, nil
 }
 
@@ -368,7 +542,7 @@ func callbackQueryDismissQueue(query *tgbotapi.CallbackQuery) (callbackConfig tg
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "解散成功",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	if island.OnBoardQueueID != queueID {
@@ -376,7 +550,7 @@ func callbackQueryDismissQueue(query *tgbotapi.CallbackQuery) (callbackConfig tg
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "你不能操作别人的队列",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	queue, err := island.ClearOldOnboardQueue(ctx)
@@ -399,13 +573,13 @@ func callbackQueryDismissQueue(query *tgbotapi.CallbackQuery) (callbackConfig tg
 	return tgbotapi.CallbackConfig{
 		CallbackQueryID: query.ID,
 		Text:            "解散成功",
-		ShowAlert:       true,
+		ShowAlert:       false,
 	}, nil
 }
 
 func callbackQueryGetPositionInQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
 	queueID := query.Data[10:]
-	uid := query.From.ID
+	uid := int64(query.From.ID)
 	ctx := context.Background()
 	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
@@ -413,7 +587,7 @@ func callbackQueryGetPositionInQueue(query *tgbotapi.CallbackQuery) (callbackCon
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
@@ -422,35 +596,217 @@ func callbackQueryGetPositionInQueue(query *tgbotapi.CallbackQuery) (callbackCon
 			return tgbotapi.CallbackConfig{
 				CallbackQueryID: query.ID,
 				Text:            "队列已取消",
-				ShowAlert:       true,
+				ShowAlert:       false,
 			}, nil
 		}
 		logrus.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
-			ShowAlert:       true,
+			ShowAlert:       false,
 		}, nil
 	}
-	l := queue.Len()
+	t := queue.Len()
+	l, err := queue.GetPosition(uid)
+	if err != nil {
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "您不在此队列中",
+			ShowAlert:       false,
+		}, nil
+	}
 	var leaveBtn = tgbotapi.NewInlineKeyboardButtonData("离开队列："+queue.Name, "/leave_"+queue.ID)
 	var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", "/position_"+queue.ID)
-	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(leaveBtn, myPositionBtn))
+	var listBtn = tgbotapi.NewInlineKeyboardButtonData("队列成员", "/showqueuemember_"+queue.ID)
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, listBtn, leaveBtn))
 	_, err = tgbot.Send(&tgbotapi.EditMessageTextConfig{
 		BaseEdit: tgbotapi.BaseEdit{
-			ChatID:      int64(uid),
+			ChatID:      uid,
 			MessageID:   query.Message.MessageID,
 			ReplyMarkup: &replyMarkup,
 		},
-		Text: fmt.Sprintf("正在队列：%s 中排队，在我前面还有：%d 人", queue.Name, l),
+		Text: fmt.Sprintf("正在队列：%s 中排队，当前位置：%d/%d", queue.Name, l+1, t),
 	})
 	if err != nil {
 		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
 			"msgID": query.Message.MessageID}).Error("edit message failed")
+		return
 	}
-	return tgbotapi.CallbackConfig{
-		CallbackQueryID: query.ID,
-		Text:            fmt.Sprintf("前面还有 %d 人", l),
-		ShowAlert:       true,
-	}, nil
+	err = errors.New("no_alert")
+	return
+}
+
+func callbackQueryComing(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
+	var name = query.From.UserName
+	if len(name) == 0 {
+		name = query.From.FirstName
+	}
+
+	action := "coming"
+	queueID := query.Data[8:]
+	replyText := fmt.Sprintf("@%s 兴奋的表示正在路上", name)
+
+	uid := query.From.ID
+	ctx := context.Background()
+	client, err := firestore.NewClient(ctx, _projectID)
+	if err != nil {
+		logrus.WithError(err).Error("create firestore client failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "队列已取消",
+				ShowAlert:       false,
+			}, nil
+		}
+		logrus.WithError(err).Error("query queue failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	var sorryBtn = tgbotapi.NewInlineKeyboardButtonData("抱歉来不了", "/sorry_"+queue.ID)
+	var doneBtn = tgbotapi.NewInlineKeyboardButtonData("我好了！", "/done_"+queue.ID)
+	var replyMarkup1 = tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(doneBtn),
+		tgbotapi.NewInlineKeyboardRow(sorryBtn))
+	_, err = tgbot.Send(&tgbotapi.EditMessageTextConfig{
+		BaseEdit: tgbotapi.BaseEdit{
+			ChatID:      query.Message.Chat.ID,
+			MessageID:   query.Message.MessageID,
+			ReplyMarkup: &replyMarkup1,
+		},
+		Text:      fmt.Sprintf("轮到你了！\n密码：*%s*\n如果不能前往，请务必和岛主联系！\n如果好了也请通知一下岛主。", queue.Password),
+		ParseMode: "MarkdownV2",
+	})
+	if err != nil {
+		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+			"msgID":  query.Message.MessageID,
+			"action": action}).Error("message send failed")
+		err = nil
+	}
+
+	replyText += fmt.Sprintf("\n队列剩余：%d", queue.Len())
+
+	var shareBtn = tgbotapi.NewInlineKeyboardButtonSwitch("分享队列："+queue.Name, "/share_"+queue.ID)
+	var dismissBtn = tgbotapi.NewInlineKeyboardButtonData("解散队列", "/dismiss_"+queue.ID)
+	var listBtn = tgbotapi.NewInlineKeyboardButtonData("查看队列", "/showqueuemember_"+queue.ID)
+	var updatePasswordBtn = tgbotapi.NewInlineKeyboardButtonData("修改密码", "/updatepassword_"+queue.ID)
+	var nextBtn = tgbotapi.NewInlineKeyboardButtonData("有请下一位", "/next_"+queue.ID)
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(shareBtn, dismissBtn),
+		tgbotapi.NewInlineKeyboardRow(listBtn, updatePasswordBtn),
+		tgbotapi.NewInlineKeyboardRow(nextBtn))
+
+	_, err = tgbot.Send(&tgbotapi.MessageConfig{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID:      queue.OwnerID,
+			ReplyMarkup: replyMarkup,
+		},
+		Text: replyText,
+	})
+	if err != nil {
+		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+			"msgID":  query.Message.MessageID,
+			"action": action}).Error("message send failed")
+		return
+	}
+	err = errors.New("no_alert")
+	return
+}
+
+func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
+	var name = query.From.UserName
+	if len(name) == 0 {
+		name = query.From.FirstName
+	}
+
+	var replyText string
+	var queueID string
+	var action string
+	if strings.HasPrefix(query.Data, "/done_") {
+		action = "done"
+		queueID = query.Data[6:]
+		replyText = fmt.Sprintf("@%s 满足的表示已经好了", name)
+	} else if strings.HasPrefix(query.Data, "/sorry_") {
+		action = "sorry"
+		queueID = query.Data[7:]
+		replyText = fmt.Sprintf("@%s 遗憾的表示自己现在有事无法前来", name)
+	}
+
+	uid := query.From.ID
+	ctx := context.Background()
+	client, err := firestore.NewClient(ctx, _projectID)
+	if err != nil {
+		logrus.WithError(err).Error("create firestore client failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "队列已取消",
+				ShowAlert:       false,
+			}, nil
+		}
+		logrus.WithError(err).Error("query queue failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+
+	_, err = tgbot.Send(&tgbotapi.EditMessageTextConfig{
+		BaseEdit: tgbotapi.BaseEdit{
+			ChatID:    query.Message.Chat.ID,
+			MessageID: query.Message.MessageID,
+		},
+		Text: "感谢本次使用",
+	})
+	if err != nil {
+		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+			"msgID":  query.Message.MessageID,
+			"action": action}).Error("message send failed")
+		err = nil
+	}
+
+	replyText += fmt.Sprintf("\n队列剩余：%d", queue.Len())
+
+	var shareBtn = tgbotapi.NewInlineKeyboardButtonSwitch("分享队列："+queue.Name, "/share_"+queue.ID)
+	var dismissBtn = tgbotapi.NewInlineKeyboardButtonData("解散队列", "/dismiss_"+queue.ID)
+	var listBtn = tgbotapi.NewInlineKeyboardButtonData("查看队列", "/showqueuemember_"+queue.ID)
+	var updatePasswordBtn = tgbotapi.NewInlineKeyboardButtonData("修改密码", "/updatepassword_"+queue.ID)
+	var nextBtn = tgbotapi.NewInlineKeyboardButtonData("有请下一位", "/next_"+queue.ID)
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(shareBtn, dismissBtn),
+		tgbotapi.NewInlineKeyboardRow(listBtn, updatePasswordBtn),
+		tgbotapi.NewInlineKeyboardRow(nextBtn))
+
+	_, err = tgbot.Send(&tgbotapi.MessageConfig{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID:      queue.OwnerID,
+			ReplyMarkup: replyMarkup,
+		},
+		Text: replyText,
+	})
+	if err != nil {
+		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+			"msgID":  query.Message.MessageID,
+			"action": action}).Error("message send failed")
+		return
+	}
+	err = errors.New("no_alert")
+	return
 }

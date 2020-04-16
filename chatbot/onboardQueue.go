@@ -3,9 +3,9 @@ package chatbot
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
+	"cloud.google.com/go/firestore"
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
@@ -13,6 +13,242 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
+
+func cmdStart(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	if !message.Chat.IsPrivate() {
+		return
+	}
+	return []*tgbotapi.MessageConfig{{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID: message.Chat.ID,
+		},
+		Text: "队列主：\n/queue 密码 开启新的队列\n/myqueue 列出自己创建的队列\n/dismiss 解散自己创建的队列\n\n参与者：\n/list 列出自己加入的队列",
+	}}, nil
+}
+
+func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	if !message.Chat.IsPrivate() {
+		return
+	}
+	ctx := context.Background()
+	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, Error{InnerError: err,
+				ReplyText: "您还没有登记您的岛屿，请用/addisland 添加您的岛屿信息",
+			}
+		}
+		logrus.WithError(err).Error("cmdMyQueue GetAnimalCrossingIslandByUserID")
+		return nil, Error{InnerError: err,
+			ReplyText: "查询岛屿时出错了。",
+		}
+	}
+	if len(island.OnBoardQueueID) == 0 {
+		return []*tgbotapi.MessageConfig{{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID: message.Chat.ID,
+			},
+			Text: "您没有开启队列",
+		}}, nil
+	}
+	queue, err := island.GetOnboardQueue(ctx)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return []*tgbotapi.MessageConfig{{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID: message.Chat.ID,
+				},
+				Text: "您没有开启队列",
+			}}, nil
+		}
+		logrus.WithError(err).Error("cmdMyQueue GetOnboardQueue")
+		return nil, Error{InnerError: err,
+			ReplyText: "查询队列时出错了",
+		}
+	}
+	if queue.Dismissed {
+		client, err := firestore.NewClient(ctx, _projectID)
+		if err != nil {
+			logrus.WithError(err).Error("cmdMyQueue newClient")
+			return nil, Error{InnerError: err,
+				ReplyText: "查询队列时出错了",
+			}
+		}
+		defer client.Close()
+		queue.Delete(ctx, client)
+		return []*tgbotapi.MessageConfig{{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID: message.Chat.ID,
+			},
+			Text: "您没有开启队列",
+		}}, nil
+	}
+	var shareBtn = tgbotapi.NewInlineKeyboardButtonSwitch("分享队列："+island.Name, "/share_"+queue.ID)
+	var dismissBtn = tgbotapi.NewInlineKeyboardButtonData("解散队列", "/dismiss_"+queue.ID)
+	var listBtn = tgbotapi.NewInlineKeyboardButtonData("查看队列", "/showqueuemember_"+queue.ID)
+	var updatePasswordBtn = tgbotapi.NewInlineKeyboardButtonData("修改密码", "/updatepassword_"+queue.ID)
+	var nextBtn = tgbotapi.NewInlineKeyboardButtonData("有请下一位", "/next_"+queue.ID)
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(shareBtn, dismissBtn),
+		tgbotapi.NewInlineKeyboardRow(listBtn, updatePasswordBtn),
+		tgbotapi.NewInlineKeyboardRow(nextBtn))
+	var replyText = fmt.Sprintf("队列已创建成功，密码：%s\n请使用分享按钮选择要分享排队的群/朋友\n*选择群组后请等待 telegram 弹出分享提示后点击提示！*\n/updatepassword 新密码 更新密码\n/dismiss 立即解散队列\n/myqueue 列出创建的队列\n*请使用下面的按钮操作*", queue.Password)
+
+	return []*tgbotapi.MessageConfig{{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: true,
+				ReplyMarkup:         replyMarkup,
+			},
+			Text:      replyText,
+			ParseMode: "MarkdownV2",
+		}},
+		nil
+}
+
+func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	if !message.Chat.IsPrivate() {
+		return
+	}
+	password := message.Text
+	if len(password) != 5 {
+		return []*tgbotapi.MessageConfig{
+			{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID: message.Chat.ID,
+				},
+				Text: "密码一定有 5 位",
+			},
+			{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:      message.Chat.ID,
+					ReplyMarkup: tgbotapi.ForceReply{ForceReply: true, Selective: true},
+				},
+				Text: "请输入新的密码",
+			},
+		}, nil
+	}
+	ctx := context.Background()
+	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, Error{InnerError: err,
+				ReplyText: "您还没有登记您的岛屿，请用/addisland 添加您的岛屿信息",
+			}
+		}
+		logrus.WithError(err).Error("cmdMyQueue GetAnimalCrossingIslandByUserID")
+		return nil, Error{InnerError: err,
+			ReplyText: "查询岛屿时出错了。",
+		}
+	}
+	if len(island.OnBoardQueueID) == 0 {
+		return []*tgbotapi.MessageConfig{{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID: message.Chat.ID,
+			},
+			Text: "您没有开启队列",
+		}}, nil
+	}
+	queue, err := island.GetOnboardQueue(ctx)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return []*tgbotapi.MessageConfig{{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID: message.Chat.ID,
+				},
+				Text: "您没有开启队列",
+			}}, nil
+		}
+		logrus.WithError(err).Error("cmdMyQueue GetOnboardQueue")
+		return nil, Error{InnerError: err,
+			ReplyText: "查询队列时出错了",
+		}
+	}
+	client, err := firestore.NewClient(ctx, _projectID)
+	if err != nil {
+		logrus.WithError(err).Error("cmdMyQueue newClient")
+		return nil, Error{InnerError: err,
+			ReplyText: "查询队列时出错了",
+		}
+	}
+	defer client.Close()
+	if queue.Dismissed {
+		defer client.Close()
+		queue.Delete(ctx, client)
+		return []*tgbotapi.MessageConfig{{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID: message.Chat.ID,
+			},
+			Text: "您没有开启队列",
+		}}, nil
+	}
+	queue.Password = password
+	if err = queue.Update(ctx, client); err != nil {
+		return nil, Error{InnerError: err,
+			ReplyText: "更新队列密码时出错了",
+		}
+	}
+	var shareBtn = tgbotapi.NewInlineKeyboardButtonSwitch("分享队列："+island.Name, "/share_"+queue.ID)
+	var dismissBtn = tgbotapi.NewInlineKeyboardButtonData("解散队列", "/dismiss_"+queue.ID)
+	var listBtn = tgbotapi.NewInlineKeyboardButtonData("查看队列", "/showqueuemember_"+queue.ID)
+	var updatePasswordBtn = tgbotapi.NewInlineKeyboardButtonData("修改密码", "/updatepassword_"+queue.ID)
+	var nextBtn = tgbotapi.NewInlineKeyboardButtonData("有请下一位", "/next_"+queue.ID)
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(shareBtn, dismissBtn),
+		tgbotapi.NewInlineKeyboardRow(listBtn, updatePasswordBtn),
+		tgbotapi.NewInlineKeyboardRow(nextBtn))
+	var replyText = fmt.Sprintf("队列已创建成功，密码：%s\n请使用分享按钮选择要分享排队的群/朋友\n*选择群组后请等待 telegram 弹出分享提示后点击提示！*\n/dismiss 立即解散队列\n/myqueue 列出自己创建的队列\n*请使用下面的按钮操作*", queue.Password)
+	tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(message.Chat.ID, message.ReplyToMessage.MessageID))
+	return []*tgbotapi.MessageConfig{{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: true,
+				ReplyMarkup:         replyMarkup,
+			},
+			Text:      replyText,
+			ParseMode: "MarkdownV2",
+		}},
+		nil
+}
+
+func cmdJoinedQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	if !message.Chat.IsPrivate() {
+		return
+	}
+	ctx := context.Background()
+	uid := int64(message.From.ID)
+	queues, err := storage.GetJoinedQueue(ctx, uid)
+	if err != nil {
+		logrus.WithError(err).Error("cmdMyQueue newClient")
+		return nil, Error{InnerError: err,
+			ReplyText: "查询队列时出错了",
+		}
+	}
+	if queues == nil || len(queues) == 0 {
+		logrus.WithError(err).Error("cmdMyQueue newClient")
+		return nil, Error{InnerError: err,
+			ReplyText: "您没有加入任何队列",
+		}
+	}
+	var rows [][]tgbotapi.InlineKeyboardButton
+	for _, q := range queues {
+		position, err := q.GetPosition(uid)
+		if err != nil {
+			continue
+		}
+		var btn = tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("队列：%s，位置 %d/%d", q.Name, position+1, q.Len()), "/showqueueinfo_"+q.ID)
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(btn))
+	}
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
+
+	return []*tgbotapi.MessageConfig{{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID:      uid,
+			ReplyMarkup: replyMarkup,
+		},
+		Text: "请选择要操作的队列",
+	}}, nil
+}
 
 func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	if !message.Chat.IsPrivate() {
@@ -25,7 +261,7 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 					DisableNotification: true,
 					ReplyMarkup:         replyMarkup,
 				},
-				Text:      "请私聊 @NS_FC_bot 后使用 */queue* \\[密码\\] [同时在线人数（<\\=7）] 开始创建上岛队列。\n您必须已经使用 */addisand* 登记过岛屿。\n创建队列后，密码不会直接公开。\n创建队列是队列创建成功后，bot 会记录您的岛屿为开放状态。",
+				Text:      "请私聊 @NS_FC_bot 后使用 */queue* \\[密码\\] 开始创建上岛队列。\n您必须已经使用 */addisand* 登记过岛屿。\n创建队列后，密码不会直接公开。\n创建队列是队列创建成功后，bot 会记录您的岛屿为开放状态。",
 				ParseMode: "MarkdownV2",
 			}},
 			nil
@@ -58,13 +294,13 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 	argstr := strings.TrimSpace(message.CommandArguments())
 	if len(argstr) == 0 {
 		return nil, Error{InnerError: err,
-			ReplyText: "/queue 需要两个参数，第一个为开岛密码，第二个为最大同时在线人数。使用空格分割。",
+			ReplyText: "/queue 需要一个参数，开岛密码。",
 		}
 	}
 	args := strings.Split(argstr, " ")
-	if len(args) != 2 {
+	if len(args) != 1 {
 		return nil, Error{InnerError: err,
-			ReplyText: "/queue 需要两个参数，第一个为开岛密码，第二个为最大同时在线人数。使用空格分割。",
+			ReplyText: "/queue 需要一个参数，开岛密码。",
 		}
 	}
 	password := args[0]
@@ -73,14 +309,11 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 			ReplyText: "动森岛屿密码必须是5位数字字母",
 		}
 	}
-	maxGuestCount, err := strconv.Atoi(args[1])
-	if err != nil || maxGuestCount > 7 || maxGuestCount < 1 {
-		return nil, Error{InnerError: err,
-			ReplyText: "最大同时在岛客人数取值范围：[1, 7]",
-		}
+	owner := message.From.UserName
+	if len(owner) == 0 {
+		owner = message.From.FirstName
 	}
-
-	queue, err := island.CreateOnboardQueue(ctx, int64(message.From.ID), password, maxGuestCount)
+	queue, err := island.CreateOnboardQueue(ctx, int64(message.From.ID), owner, password)
 	if err != nil {
 		logrus.WithError(err).Error("创建队列时出错")
 		return []*tgbotapi.MessageConfig{{
@@ -99,15 +332,13 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 	}
 	var shareBtn = tgbotapi.NewInlineKeyboardButtonSwitch("分享队列："+island.Name, "/share_"+queue.ID)
 	var dismissBtn = tgbotapi.NewInlineKeyboardButtonData("解散队列", "/dismiss_"+queue.ID)
-	var listBtn = tgbotapi.NewInlineKeyboardButtonData("查看队列", "/list_"+queue.ID)
+	var listBtn = tgbotapi.NewInlineKeyboardButtonData("查看队列", "/showqueuemember_"+queue.ID)
+	var updatePasswordBtn = tgbotapi.NewInlineKeyboardButtonData("修改密码", "/updatepassword_"+queue.ID)
 	var nextBtn = tgbotapi.NewInlineKeyboardButtonData("有请下一位", "/next_"+queue.ID)
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(shareBtn, dismissBtn),
-		tgbotapi.NewInlineKeyboardRow(listBtn),
+		tgbotapi.NewInlineKeyboardRow(listBtn, updatePasswordBtn),
 		tgbotapi.NewInlineKeyboardRow(nextBtn))
-	var qid = strings.ReplaceAll(queue.ID, "-", "\\-")
-	qid = strings.ReplaceAll(qid, "_", "\\_")
-	qid = strings.ReplaceAll(qid, "*", "\\*")
-	var replyText = fmt.Sprintf("队列已创建成功，队列ID：*%s*\n请使用分享按钮选择要分享排队的群/朋友\n*选择群组后请等待 telegram 弹出分享提示后点击提示！*\n/next 指令将向队列中下一顺位的朋友发送登岛密码\n/dismiss 立即解散队列", qid)
+	var replyText = fmt.Sprintf("队列已创建成功，密码：%s\n请使用分享按钮选择要分享排队的群/朋友\n*选择群组后请等待 telegram 弹出分享提示后点击提示！*\n/dismiss 立即解散队列\n/myqueue 列出自己创建的队列\n*请使用下面的按钮操作*", queue.Password)
 
 	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{

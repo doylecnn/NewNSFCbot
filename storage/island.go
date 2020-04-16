@@ -123,14 +123,14 @@ func (i Island) Update(ctx context.Context) (err error) {
 }
 
 // CreateOnboardQueue create onboard island queue
-func (i *Island) CreateOnboardQueue(ctx context.Context, uid int64, password string, maxGuestCount int) (queue *OnboardQueue, err error) {
+func (i *Island) CreateOnboardQueue(ctx context.Context, uid int64, owner, password string) (queue *OnboardQueue, err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
 	if err != nil {
 		return
 	}
 	defer client.Close()
 
-	queue = &OnboardQueue{Name: i.Name, OwnerID: uid, Password: password, MaxGuestCount: maxGuestCount}
+	queue = &OnboardQueue{Name: i.Name, OwnerID: uid, Owner: owner, Password: password, IslandInfo: i.ShortInfo()}
 	err = client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		ref := client.Collection("onboardQueues").NewDoc()
 		queue.ID = ref.ID
@@ -205,6 +205,33 @@ func (i *Island) ClearOldOnboardQueue(ctx context.Context) (queue *OnboardQueue,
 		logrus.WithError(err).Info("An error has occurred when ClearOldOnboardQueue")
 	}
 	return
+}
+
+// ShortInfo short island info
+func (i Island) ShortInfo() string {
+	airportstatus := "现正开放"
+	var hemisphere string
+	if i.Hemisphere == 0 {
+		hemisphere = "北"
+	} else {
+		hemisphere = "南"
+	}
+	if !strings.HasSuffix(i.Name, "岛") {
+		i.Name += "岛"
+	}
+	if len(i.BaseInfo) == 0 {
+		i.BaseInfo = strings.Join(i.Fruits, ", ")
+		if err := i.Update(context.Background()); err != nil {
+			logrus.WithError(err).Error()
+		}
+	}
+	var text string = fmt.Sprintf("位于%s半球%s时区的岛屿：%s, 岛民代表：%s。 %s\n基本信息：%s\n\n", hemisphere, i.Timezone.String(), i.Name, i.Owner, airportstatus, i.BaseInfo)
+	if i.AirportIsOpen {
+		if len(i.Info) > 0 {
+			text += "本回开放特色信息：" + i.Info
+		}
+	}
+	return text
 }
 
 func (i Island) String() string {

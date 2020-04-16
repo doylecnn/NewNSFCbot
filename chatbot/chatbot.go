@@ -109,7 +109,7 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 	})
 
 	// 仅占位用
-	router.HandleFunc("start", func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) { return })
+	router.HandleFunc("start", cmdStart)
 
 	router.HandleFunc("addfc", cmdAddFC)
 	router.HandleFunc("delfc", cmdDelFC)
@@ -137,6 +137,9 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 
 	// queue
 	router.HandleFunc("queue", cmdOpenIslandQueue)
+	router.HandleFunc("myqueue", cmdMyQueue)
+	//router.HandleFunc("updatepassword", cmdUpdatePassword) 私聊直接回复特定消息触发
+	router.HandleFunc("list", cmdJoinedQueue)
 	router.HandleFunc("dismiss", cmdDismissIslandQueue)
 
 	// web login
@@ -209,6 +212,17 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 			c.HandleInlineQuery(inlineQuery)
 		} else if callbackQuery != nil {
 			c.HandleCallbackQuery(callbackQuery)
+		} else if message != nil && message.Chat.IsPrivate() && !message.IsCommand() && message.ReplyToMessage != nil && message.ReplyToMessage.Text == "请输入新的密码" && message.ReplyToMessage.From.IsBot {
+			replies, e := cmdUpdatePassword(message)
+			if e != nil {
+				logrus.WithError(e).Error("cmdUpdatePassword")
+			}
+			for _, reply := range replies {
+				_, e := c.TgBotClient.Send(reply)
+				if e != nil {
+					logrus.WithError(e).Error("cmdUpdatePassword send message")
+				}
+			}
 		} else if message != nil && message.IsCommand() {
 			if message.Chat.IsGroup() || message.Chat.IsSuperGroup() || message.Chat.IsPrivate() {
 				if len(sentMsgs) > 0 {

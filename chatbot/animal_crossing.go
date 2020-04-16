@@ -669,7 +669,7 @@ func formatWeekPrices(priceHistory []*storage.PriceHistory) (text string, err er
 	}
 	return fmt.Sprintf("本周您的报价如下: 可以 [点我](https://ac-turnip.com/#%s) 查询本周价格趋势\n"+
 		"\\| Sun \\| Mon \\| Tue \\| Wed \\| Thu \\| Fri \\| Sat \\|\n"+
-		"\\| %s \\|", strings.TrimRight(strings.Join(weekPrices, ","), ",\\-"), strings.Join(datePrice, " \\| ")), nil
+		"\\| %s \\|", strings.TrimRight(strings.Join(weekPrices, "\\-"), ",\\-"), strings.Join(datePrice, " \\| ")), nil
 }
 
 func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {

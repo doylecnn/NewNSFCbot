@@ -469,10 +469,46 @@ type ACNHTurnipPricesBoardRecord struct {
 	Price  int `firestore:"price"`
 }
 
+//Equals 判等
+func (r *ACNHTurnipPricesBoardRecord) Equals(other *ACNHTurnipPricesBoardRecord) bool {
+	if r == nil || other == nil {
+		return false
+	}
+	if r.UserID != other.UserID {
+		return false
+	}
+	if r.Price != other.Price {
+		return false
+	}
+	return true
+}
+
 //ACNHTurnipPricesBoard ACNH_TurnipPricesBoard
 type ACNHTurnipPricesBoard struct {
 	TopPriceRecords   []*ACNHTurnipPricesBoardRecord `firestore:"top_price_records"`
 	LowestPriceRecord *ACNHTurnipPricesBoardRecord   `firestore:"lowest_price_record"`
+}
+
+//Equals 判等
+func (b *ACNHTurnipPricesBoard) Equals(other *ACNHTurnipPricesBoard) (rst bool) {
+	if b == nil || other == nil {
+		return false
+	}
+	if !b.LowestPriceRecord.Equals(other.LowestPriceRecord) {
+		return false
+	}
+	if b.TopPriceRecords == nil || other.TopPriceRecords == nil {
+		return false
+	}
+	if len(b.TopPriceRecords) != len(other.TopPriceRecords) {
+		return false
+	}
+	for i := 0; i < len(b.TopPriceRecords); i++ {
+		if !b.TopPriceRecords[i].Equals(other.TopPriceRecords[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // Group telegram group info
