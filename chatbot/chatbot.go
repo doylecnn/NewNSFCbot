@@ -137,9 +137,6 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 
 	// queue
 	router.HandleFunc("queue", cmdOpenIslandQueue)
-	router.HandleFunc("next", cmdNextIslandQueue)
-	router.HandleFunc("join", cmdJoinIslandQueue)
-	router.HandleFunc("leave", cmdLeaveIslandQueue)
 	router.HandleFunc("dismiss", cmdDismissIslandQueue)
 
 	// web login

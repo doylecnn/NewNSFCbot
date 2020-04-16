@@ -7,14 +7,20 @@ import (
 	"cloud.google.com/go/firestore"
 )
 
+type persion struct {
+	UID  int64  `firestore:"UID"`
+	Name string `firestore:"Name"`
+}
+
 // OnboardQueue 登岛队列
 type OnboardQueue struct {
-	ID            string  `firestore:"-"`
-	Name          string  `firestore:"Name"`
-	Password      string  `firestore:"Password"`
-	MaxGuestCount int     `firestore:"MaxGuestCount"`
-	Queue         []int64 `firestore:"queue"` //private chat id
-	Dismissed     bool    `firestore:"Dismissed"`
+	ID            string    `firestore:"-"`
+	Name          string    `firestore:"Name"`
+	OwnerID       int64     `firestore:"OwnerID"`
+	Password      string    `firestore:"Password"`
+	MaxGuestCount int       `firestore:"MaxGuestCount"`
+	Queue         []persion `firestore:"queue"` //private chat id
+	Dismissed     bool      `firestore:"Dismissed"`
 }
 
 // GetOnboardQueue return a exists OnboardQueue
@@ -58,21 +64,21 @@ func (q *OnboardQueue) Len() int {
 }
 
 // Append chatID into OnboardQueue
-func (q *OnboardQueue) Append(ctx context.Context, client *firestore.Client, chatID int64) (err error) {
+func (q *OnboardQueue) Append(ctx context.Context, client *firestore.Client, uid int64, username string) (err error) {
 	if q == nil || len(q.ID) == 0 {
 		return
 	}
 	if q.Dismissed {
 		return errors.New("queue has been dismissed")
 	}
-	for _, cid := range q.Queue {
-		if cid == chatID {
+	for _, p := range q.Queue {
+		if p.UID == uid {
 			return errors.New("already in this queue")
 		}
 	}
 	co := client.Doc("onboardQueues/" + q.ID)
 	_, err = co.Update(ctx, []firestore.Update{
-		{Path: "queue", Value: firestore.ArrayUnion(chatID)},
+		{Path: "queue", Value: firestore.ArrayUnion(persion{UID: uid, Name: username})},
 	})
 	if err != nil {
 		return
@@ -81,7 +87,7 @@ func (q *OnboardQueue) Append(ctx context.Context, client *firestore.Client, cha
 }
 
 // Remove chatID into OnboardQueue
-func (q *OnboardQueue) Remove(ctx context.Context, client *firestore.Client, chatID int64) (err error) {
+func (q *OnboardQueue) Remove(ctx context.Context, client *firestore.Client, uid int64) (err error) {
 	if q == nil || len(q.ID) == 0 {
 		return
 	}
@@ -89,8 +95,10 @@ func (q *OnboardQueue) Remove(ctx context.Context, client *firestore.Client, cha
 		return errors.New("queue has been dismissed")
 	}
 	var exists = false
-	for _, cid := range q.Queue {
-		if cid == chatID {
+	var deleteItem persion
+	for _, p := range q.Queue {
+		if p.UID == uid {
+			deleteItem = p
 			exists = true
 			break
 		}
@@ -100,7 +108,7 @@ func (q *OnboardQueue) Remove(ctx context.Context, client *firestore.Client, cha
 	}
 	co := client.Doc("onboardQueues/" + q.ID)
 	_, err = co.Update(ctx, []firestore.Update{
-		{Path: "queue", Value: firestore.ArrayRemove(chatID)},
+		{Path: "queue", Value: firestore.ArrayRemove(deleteItem)},
 	})
 	if err != nil {
 		return
@@ -119,7 +127,7 @@ func (q *OnboardQueue) Next(ctx context.Context, client *firestore.Client) (chat
 		return
 	}
 
-	chatID = q.Queue[0]
+	chatID = q.Queue[0].UID
 
 	co := client.Doc("onboardQueues/" + q.ID)
 	_, err = co.Update(ctx, []firestore.Update{

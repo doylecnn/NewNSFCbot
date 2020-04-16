@@ -123,14 +123,14 @@ func (i Island) Update(ctx context.Context) (err error) {
 }
 
 // CreateOnboardQueue create onboard island queue
-func (i *Island) CreateOnboardQueue(ctx context.Context, password string, maxGuestCount int) (queue *OnboardQueue, err error) {
+func (i *Island) CreateOnboardQueue(ctx context.Context, uid int64, password string, maxGuestCount int) (queue *OnboardQueue, err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
 	if err != nil {
 		return
 	}
 	defer client.Close()
 
-	queue = &OnboardQueue{Name: i.Name, Password: password, MaxGuestCount: maxGuestCount}
+	queue = &OnboardQueue{Name: i.Name, OwnerID: uid, Password: password, MaxGuestCount: maxGuestCount}
 	err = client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		ref := client.Collection("onboardQueues").NewDoc()
 		queue.ID = ref.ID
