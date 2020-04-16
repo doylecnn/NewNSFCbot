@@ -463,11 +463,24 @@ func GetGroupUsers(ctx context.Context, groupID int64) (users []*User, err error
 	return users, nil
 }
 
+//ACNHTurnipPricesBoardRecord ACNHTurnipPricesBoardRecord
+type ACNHTurnipPricesBoardRecord struct {
+	UserID int `firestore:"userID"`
+	Price  int `firestore:"price"`
+}
+
+//ACNHTurnipPricesBoard ACNH_TurnipPricesBoard
+type ACNHTurnipPricesBoard struct {
+	TopPriceRecords   []*ACNHTurnipPricesBoardRecord `firestore:"top_price_records"`
+	LowestPriceRecord *ACNHTurnipPricesBoardRecord   `firestore:"lowest_price_record"`
+}
+
 // Group telegram group info
 type Group struct {
-	ID    int64  `firestore:"id"`
-	Type  string `firestore:"type"`
-	Title string `firestore:"title"`
+	ID                    int64                  `firestore:"id"`
+	Type                  string                 `firestore:"type"`
+	Title                 string                 `firestore:"title"`
+	ACNHTurnipPricesBoard *ACNHTurnipPricesBoard `firestore:"acnh_turnip_prices_board,omitempty"`
 }
 
 // GetAllGroups get all groups

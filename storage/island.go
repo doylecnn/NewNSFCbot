@@ -184,7 +184,7 @@ func (i *Island) ClearOldOnboardQueue(ctx context.Context) (queue *OnboardQueue,
 						"OnBoardQueueID": "",
 					}, firestore.MergeAll)
 				}
-				return err
+				return nil
 			}
 			err = tx.Set(islandRef, map[string]interface{}{
 				"OnBoardQueueID": "",

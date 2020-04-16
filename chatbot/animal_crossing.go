@@ -439,13 +439,7 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 			ReplyText: "更新报价时出错狸",
 		}
 	}
-	return []*tgbotapi.MessageConfig{{
-			BaseChat: tgbotapi.BaseChat{
-				ChatID:              message.Chat.ID,
-				ReplyToMessageID:    message.MessageID,
-				DisableNotification: true},
-			Text: "更新大头菜报价成功狸"}},
-		nil
+	return getWeeklyDTCPriceHistory(ctx, message, uid, "")
 }
 
 // cmdDTCWeekPriceAndPredict 当周菜价回看/预测
@@ -461,6 +455,10 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 		}
 	}
 	ctx := context.Background()
+	return getWeeklyDTCPriceHistory(ctx, message, uid, args)
+}
+
+func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, uid int, argstr string) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -477,8 +475,8 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 	var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 0, 0, 0, 0, island.Timezone.Location())
 	var weekStartDate = weekStartDateLoc.UTC()
 	var weekEndDate = weekStartDate.AddDate(0, 0, 7)
-	if len(args) != 0 {
-		prices, err = makeWeeklyPrice(strings.TrimSpace(message.CommandArguments()), island.Timezone, weekStartDate, weekEndDate)
+	if len(argstr) != 0 {
+		prices, err = makeWeeklyPrice(argstr, island.Timezone, weekStartDate, weekEndDate)
 		if err != nil {
 			return nil, Error{InnerError: err,
 				ReplyText: "更新一周报价时出错狸，请确认格式：\n[买入价] [上午价/下午价]……\n价格范围[1, 999]",
@@ -545,7 +543,9 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 			ReplyText: "格式化一周报价时出错",
 		}
 	}
-	return []*tgbotapi.MessageConfig{{
+	topPriceUsers, lowestPriceUser, changed, err := getTopPriceUsersAndLowestPriceUser(ctx, message.Chat.ID)
+	if err != nil || len(argstr) == 0 {
+		replyMessage = []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -554,8 +554,46 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 			Text:                  replyText,
 			ParseMode:             "MarkdownV2",
 			DisableWebPagePreview: true,
-		}},
-		nil
+		}}
+		return
+	}
+	if !changed {
+		replyText = "*您本次的报价对高价排行无影响*\n" + replyText
+	}
+	replyMessage = []*tgbotapi.MessageConfig{{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID:              message.Chat.ID,
+			ReplyToMessageID:    message.MessageID,
+			DisableNotification: true,
+		},
+		Text:                  replyText,
+		ParseMode:             "MarkdownV2",
+		DisableWebPagePreview: true,
+	}}
+	if changed {
+		var dtcPrices []string
+		for i, u := range topPriceUsers {
+			if u != nil {
+				dtcPrices = append(dtcPrices, formatIslandDTCPrice(u, i+1))
+			}
+		}
+
+		replyText2 := fmt.Sprintf("*今日高价（前 %d）：*\n%s", len(dtcPrices), strings.Join(dtcPrices, "\n"))
+
+		if lowestPriceUser != nil {
+			replyText2 += "\n*今日最低：*\n" + formatIslandDTCPrice(lowestPriceUser, -1)
+		}
+		replyMessage = append(replyMessage, &tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: true,
+			},
+			Text:      replyText2,
+			ParseMode: "MarkdownV2",
+		})
+	}
+	return replyMessage, nil
 }
 
 func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, endDate time.Time) (priceHistory []*storage.PriceHistory, err error) {
@@ -639,11 +677,53 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 		return
 	}
 	ctx := context.Background()
-	users, err := storage.GetGroupUsers(ctx, message.Chat.ID)
+	topPriceUsers, lowestPriceUser, _, err := getTopPriceUsersAndLowestPriceUser(ctx, message.Chat.ID)
 	if err != nil {
-		return nil, Error{InnerError: err,
-			ReplyText: "查询时出错狸",
+		if err.Error() == "NoValidPrice" {
+			return []*tgbotapi.MessageConfig{{
+					BaseChat: tgbotapi.BaseChat{
+						ChatID:              message.Chat.ID,
+						ReplyToMessageID:    message.MessageID,
+						DisableNotification: true},
+					Text: "本群最近12小时内没有有效的报价狸"}},
+				nil
 		}
+		return
+	}
+	var dtcPrices []string
+	for i, u := range topPriceUsers {
+		if u != nil {
+			dtcPrices = append(dtcPrices, formatIslandDTCPrice(u, i+1))
+		}
+	}
+
+	replyText := fmt.Sprintf("*今日高价（前 %d）：*\n%s", len(dtcPrices), strings.Join(dtcPrices, "\n"))
+
+	if lowestPriceUser != nil {
+		replyText += "\n*今日最低：*\n" + formatIslandDTCPrice(lowestPriceUser, -1)
+	}
+
+	return []*tgbotapi.MessageConfig{{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: true},
+			Text:      strings.ReplaceAll(replyText, "-", "\\-"),
+			ParseMode: "MarkdownV2",
+		}},
+		nil
+}
+
+func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64) (topPriceUsers []*storage.User, lowestPriceUser *storage.User, changed bool, err error) {
+	group, err := storage.GetGroup(ctx, chatID)
+	if err != nil {
+		logrus.WithError(err).Error("GetGroup")
+		return nil, nil, false, err
+	}
+	users, err := storage.GetGroupUsers(ctx, chatID)
+	if err != nil {
+		logrus.WithError(err).Error("GetGroupUsers")
+		return nil, nil, false, err
 	}
 
 	var priceUsers []*storage.User
@@ -673,21 +753,16 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 	}
 
 	if len(priceUsers) == 0 {
-		return []*tgbotapi.MessageConfig{{
-				BaseChat: tgbotapi.BaseChat{
-					ChatID:              message.Chat.ID,
-					ReplyToMessageID:    message.MessageID,
-					DisableNotification: true},
-				Text: "本群最近12小时内没有有效的报价狸"}},
-			nil
+		return nil, nil, false, errors.New("NoValidPrice")
 	}
 	sort.Slice(priceUsers, func(i, j int) bool {
 		return priceUsers[i].Island.LastPrice.Price > priceUsers[j].Island.LastPrice.Price
 	})
 
-	var topPrices []*storage.User
 	count := 5
 	l := len(priceUsers)
+	var topRecords = []*storage.ACNHTurnipPricesBoardRecord{}
+	var lowestRecord *storage.ACNHTurnipPricesBoardRecord
 	if l > count {
 		for i := count; i < l; i++ {
 			if priceUsers[i].Island.LastPrice.Price < 500 {
@@ -695,36 +770,56 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 				break
 			}
 		}
-		topPrices = priceUsers[:count]
+		topPriceUsers = priceUsers[:count]
 	} else {
-		topPrices = priceUsers
+		topPriceUsers = priceUsers
+	}
+	for _, u := range topPriceUsers {
+		topRecords = append(topRecords, &storage.ACNHTurnipPricesBoardRecord{UserID: u.ID, Price: u.Island.LastPrice.Price})
+	}
+	if l > count {
+		lowestPriceUser = priceUsers[l-1]
+		lowestRecord = &storage.ACNHTurnipPricesBoardRecord{UserID: lowestPriceUser.ID, Price: lowestPriceUser.Island.LastPrice.Price}
 	}
 
-	var dtcPrices []string
-	for i, u := range topPrices {
-		if u != nil {
-			dtcPrices = append(dtcPrices, formatIslandDTCPrice(u, i+1))
+	newACNHTurnipPricesBoard := &storage.ACNHTurnipPricesBoard{TopPriceRecords: topRecords, LowestPriceRecord: lowestRecord}
+	if group.ACNHTurnipPricesBoard == nil ||
+		group.ACNHTurnipPricesBoard.LowestPriceRecord == nil && newACNHTurnipPricesBoard.LowestPriceRecord != nil ||
+		group.ACNHTurnipPricesBoard.TopPriceRecords == nil && newACNHTurnipPricesBoard.TopPriceRecords != nil ||
+		group.ACNHTurnipPricesBoard.LowestPriceRecord != nil && newACNHTurnipPricesBoard.LowestPriceRecord == nil ||
+		group.ACNHTurnipPricesBoard.TopPriceRecords != nil && newACNHTurnipPricesBoard.TopPriceRecords == nil {
+		changed = true
+	} else if group.ACNHTurnipPricesBoard.LowestPriceRecord != nil && newACNHTurnipPricesBoard.LowestPriceRecord != nil {
+		if group.ACNHTurnipPricesBoard.LowestPriceRecord.UserID != newACNHTurnipPricesBoard.LowestPriceRecord.UserID {
+			changed = true
+		} else if group.ACNHTurnipPricesBoard.LowestPriceRecord.Price != newACNHTurnipPricesBoard.LowestPriceRecord.Price {
+			changed = true
+		}
+	} else if group.ACNHTurnipPricesBoard.TopPriceRecords != nil && newACNHTurnipPricesBoard.TopPriceRecords != nil {
+		if len(group.ACNHTurnipPricesBoard.TopPriceRecords) != len(newACNHTurnipPricesBoard.TopPriceRecords) {
+			changed = true
+		} else {
+			for i := 0; i < len(group.ACNHTurnipPricesBoard.TopPriceRecords); i++ {
+				if group.ACNHTurnipPricesBoard.TopPriceRecords[i].UserID != newACNHTurnipPricesBoard.TopPriceRecords[i].UserID {
+					changed = true
+					break
+				} else if group.ACNHTurnipPricesBoard.TopPriceRecords[i].Price != newACNHTurnipPricesBoard.TopPriceRecords[i].Price {
+					changed = true
+					break
+				}
+			}
 		}
 	}
-
-	replyText := fmt.Sprintf("*今日高价（前 %d）：*\n%s", count, strings.Join(dtcPrices, "\n"))
-
-	if l > count {
-		replyText += "\n*今日最低：*\n" + formatIslandDTCPrice(priceUsers[l-1], l)
+	if changed {
+		group.ACNHTurnipPricesBoard = newACNHTurnipPricesBoard
+		if err = group.Update(ctx); err != nil {
+			logrus.WithError(err).Error("update group ACNHTurnipPricesBoard")
+		}
 	}
-
-	return []*tgbotapi.MessageConfig{{
-			BaseChat: tgbotapi.BaseChat{
-				ChatID:              message.Chat.ID,
-				ReplyToMessageID:    message.MessageID,
-				DisableNotification: true},
-			Text:      strings.ReplaceAll(replyText, "-", "\\-"),
-			ParseMode: "MarkdownV2",
-		}},
-		nil
+	return
 }
 
-func formatIslandDTCPrice(user *storage.User, index int) string {
+func formatIslandDTCPrice(user *storage.User, rank int) string {
 	if !strings.HasSuffix(user.Island.Name, "岛") {
 		user.Island.Name += "岛"
 	}
@@ -744,7 +839,13 @@ func formatIslandDTCPrice(user *storage.User, index int) string {
 		shift := time.Date(d.Year(), d.Month(), d.Day(), HH, 0, 0, 0, user.Island.LastPrice.Timezone.Location())
 		priceTimeout = int(shift.UTC().Sub(time.Now()).Minutes())
 	}
-	return fmt.Sprintf("%d\\. *%s*的 *%s* 菜价：*%d*，*%d* 分钟后*%s*。", index, user.Name, user.Island.Name, user.Island.LastPrice.Price, priceTimeout, timeoutOrCloseDoor)
+	var formatedString string
+	if rank == -1 {
+		formatedString = fmt.Sprintf("*%s*的 *%s* 菜价：*%d*，*%d* 分钟后*%s*。", user.Name, user.Island.Name, user.Island.LastPrice.Price, priceTimeout, timeoutOrCloseDoor)
+	} else {
+		formatedString = fmt.Sprintf("%d\\. *%s*的 *%s* 菜价：*%d*，*%d* 分钟后*%s*。", rank, user.Name, user.Island.Name, user.Island.LastPrice.Price, priceTimeout, timeoutOrCloseDoor)
+	}
+	return formatedString
 }
 
 func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
