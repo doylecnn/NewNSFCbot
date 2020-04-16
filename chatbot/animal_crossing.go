@@ -322,7 +322,7 @@ func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 		island.OpenTime = time.Now()
 		island.Update(ctx)
 	}
-	var btn = tgbotapi.NewInlineKeyboardButtonURL("开排队点我 /queue", "https://t.me/ns_fc_bot")
+	var btn = tgbotapi.NewInlineKeyboardButtonData("点此创建新队列", "/queue")
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(btn))
 	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
@@ -544,7 +544,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 		}
 	}
 	topPriceUsers, lowestPriceUser, changed, err := getTopPriceUsersAndLowestPriceUser(ctx, message.Chat.ID)
-	if err != nil || len(argstr) == 0 {
+	if err != nil {
 		replyMessage = []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,

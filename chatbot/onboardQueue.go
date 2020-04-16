@@ -17,7 +17,7 @@ import (
 
 func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	if !message.Chat.IsPrivate() {
-		var btn = tgbotapi.NewInlineKeyboardButtonURL("开排队点此并输入/queue", "https://t.me/ns_fc_bot")
+		var btn = tgbotapi.NewInlineKeyboardButtonData("点此创建新队列", "/queue")
 		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(btn))
 		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
@@ -26,7 +26,7 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 					DisableNotification: true,
 					ReplyMarkup:         replyMarkup,
 				},
-				Text:      "请私聊bot 后使用 */queue* \\[密码\\] [同时在线人数（<\\=7）] 开始创建上岛队列。\n您必须已经使用 */addisand* 登记过岛屿。\n创建队列后，密码不会直接公开。\n创建队列是队列创建成功后，bot 会记录您的岛屿为开放状态。",
+				Text:      "请私聊 @NS_FC_bot 后使用 */queue* \\[密码\\] [同时在线人数（<\\=7）] 开始创建上岛队列。\n您必须已经使用 */addisand* 登记过岛屿。\n创建队列后，密码不会直接公开。\n创建队列是队列创建成功后，bot 会记录您的岛屿为开放状态。",
 				ParseMode: "MarkdownV2",
 			}},
 			nil
@@ -103,7 +103,7 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 	var qid = strings.ReplaceAll(queue.ID, "-", "\\-")
 	qid = strings.ReplaceAll(qid, "_", "\\_")
 	qid = strings.ReplaceAll(qid, "*", "\\*")
-	var replyText = fmt.Sprintf("队列已创建成功，队列ID：*%s*\n请使用分享按钮选择要分享排队的群/朋友\n/next 指令将向队列中下一顺位的朋友发送登岛密码\n/dismiss 立即解散队列", qid)
+	var replyText = fmt.Sprintf("队列已创建成功，队列ID：*%s*\n请使用分享按钮选择要分享排队的群/朋友\n*选择群组后请等待 telegram 弹出分享提示后点击提示！*\n/next 指令将向队列中下一顺位的朋友发送登岛密码\n/dismiss 立即解散队列", qid)
 
 	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{

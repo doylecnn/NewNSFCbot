@@ -9,11 +9,19 @@ import (
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 //HandleCallbackQuery handle all CallbackQuery
 func (c ChatBot) HandleCallbackQuery(query *tgbotapi.CallbackQuery) {
-	if strings.HasPrefix(query.Data, "/join_") {
+	if query.Data == "/queue" {
+		if result, err := callbackQueryStartQueue(query); err != nil {
+			logrus.Warn(err)
+		} else {
+			c.TgBotClient.AnswerCallbackQuery(*result)
+		}
+	} else if strings.HasPrefix(query.Data, "/join_") {
 		if result, err := callbackQueryJoinQueue(query); err != nil {
 			logrus.Warn(err)
 		} else {
@@ -40,6 +48,23 @@ func (c ChatBot) HandleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	}
 }
 
+func callbackQueryStartQueue(query *tgbotapi.CallbackQuery) (callbackConfig *tgbotapi.CallbackConfig, err error) {
+	_, err = tgbot.Send(&tgbotapi.MessageConfig{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID: int64(query.From.ID),
+		},
+		Text: "请使用指令 /queue [密码] [同时最大客人数] 创建队列\n创建完成后请分享到其它聊天中邀请大家排队。"})
+	if err != nil {
+		logrus.WithError(err).WithFields(logrus.Fields{"uid": query.From.ID,
+			"msgID": query.Message.MessageID}).Error("send message failed")
+	}
+	return &tgbotapi.CallbackConfig{
+		CallbackQueryID: query.ID,
+		Text:            "请与 @NS_FC_bot 私聊",
+		ShowAlert:       true,
+	}, nil
+}
+
 func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig *tgbotapi.CallbackConfig, err error) {
 	queueID := query.Data[7:]
 	uid := query.From.ID
@@ -55,6 +80,13 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig *tgb
 	}
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return &tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "success",
+				ShowAlert:       true,
+			}, nil
+		}
 		logrus.WithError(err).Error("query queue failed")
 		return &tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
@@ -191,6 +223,13 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig *tgbo
 	}
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return &tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "队列已取消",
+				ShowAlert:       true,
+			}, nil
+		}
 		logrus.WithError(err).Error("query queue failed")
 		return &tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
