@@ -543,17 +543,34 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 			ReplyText: "格式化一周报价时出错",
 		}
 	}
+	now := time.Now().In(island.Timezone.Location()).Format("2006-01-02 15:04:05 -0700")
+	now = strings.ReplaceAll(now, "-", "\\-")
+	now = strings.ReplaceAll(now, "+", "\\+")
+	replyText = fmt.Sprintf("您的岛上时间：%s\n", now) + replyText
+	if message.Chat.IsPrivate() {
+		replyMessage = []*tgbotapi.MessageConfig{{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              message.Chat.ID,
+				ReplyToMessageID:    message.MessageID,
+				DisableNotification: false,
+			},
+			Text:                  replyText,
+			ParseMode:             "MarkdownV2",
+			DisableWebPagePreview: false,
+		}}
+		return
+	}
 	topPriceUsers, lowestPriceUser, changed, err := getTopPriceUsersAndLowestPriceUser(ctx, message.Chat.ID)
 	if err != nil {
 		replyMessage = []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
-				DisableNotification: true,
+				DisableNotification: false,
 			},
 			Text:                  replyText,
 			ParseMode:             "MarkdownV2",
-			DisableWebPagePreview: true,
+			DisableWebPagePreview: false,
 		}}
 		return
 	}
@@ -564,11 +581,11 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:              message.Chat.ID,
 			ReplyToMessageID:    message.MessageID,
-			DisableNotification: true,
+			DisableNotification: false,
 		},
 		Text:                  replyText,
 		ParseMode:             "MarkdownV2",
-		DisableWebPagePreview: true,
+		DisableWebPagePreview: false,
 	}}
 	if changed {
 		var dtcPrices []string
@@ -667,9 +684,10 @@ func formatWeekPrices(priceHistory []*storage.PriceHistory) (text string, err er
 	for i := 1; i < 13; i += 2 {
 		datePrice[(i+1)/2] = fmt.Sprintf("%s/%s", weekPrices[i], weekPrices[i+1])
 	}
-	return fmt.Sprintf("本周您的报价如下: 可以 [点我](https://ac-turnip.com/#%s) 查询本周价格趋势\n"+
+	urlpath := strings.TrimRight(strings.Join(weekPrices, "\\-"), ",\\-")
+	return fmt.Sprintf("本周您的[报价](https://ac-turnip.com/p-%s.png)如下: 可以 [点我](https://ac-turnip.com/#%s) 查询本周价格趋势\n"+
 		"\\| Sun \\| Mon \\| Tue \\| Wed \\| Thu \\| Fri \\| Sat \\|\n"+
-		"\\| %s \\|", strings.TrimRight(strings.Join(weekPrices, "\\-"), ",\\-"), strings.Join(datePrice, " \\| ")), nil
+		"\\| %s \\|", urlpath, urlpath, strings.Join(datePrice, " \\| ")), nil
 }
 
 func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
@@ -736,7 +754,8 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64) (topP
 			continue
 		}
 		var h = island.LastPrice.LocationDateTime().Hour()
-		if time.Since(island.LastPrice.Date) > 12*time.Hour {
+		if time.Since(island.LastPrice.Date) > 24*time.Hour {
+			//logrus.WithFields(logrus.Fields{"price": island.LastPrice.Price, "date": island.LastPrice.LocationDateTime()}).Debug("outdate")
 			continue
 		} else if h >= 8 && h < 12 && time.Since(island.LastPrice.Date) > 4*time.Hour {
 			continue
@@ -783,33 +802,8 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64) (topP
 	}
 
 	newACNHTurnipPricesBoard := &storage.ACNHTurnipPricesBoard{TopPriceRecords: topRecords, LowestPriceRecord: lowestRecord}
-	if group.ACNHTurnipPricesBoard == nil ||
-		group.ACNHTurnipPricesBoard.LowestPriceRecord == nil && newACNHTurnipPricesBoard.LowestPriceRecord != nil ||
-		group.ACNHTurnipPricesBoard.TopPriceRecords == nil && newACNHTurnipPricesBoard.TopPriceRecords != nil ||
-		group.ACNHTurnipPricesBoard.LowestPriceRecord != nil && newACNHTurnipPricesBoard.LowestPriceRecord == nil ||
-		group.ACNHTurnipPricesBoard.TopPriceRecords != nil && newACNHTurnipPricesBoard.TopPriceRecords == nil {
-		changed = true
-	} else if group.ACNHTurnipPricesBoard.LowestPriceRecord != nil && newACNHTurnipPricesBoard.LowestPriceRecord != nil {
-		if group.ACNHTurnipPricesBoard.LowestPriceRecord.UserID != newACNHTurnipPricesBoard.LowestPriceRecord.UserID {
-			changed = true
-		} else if group.ACNHTurnipPricesBoard.LowestPriceRecord.Price != newACNHTurnipPricesBoard.LowestPriceRecord.Price {
-			changed = true
-		}
-	} else if group.ACNHTurnipPricesBoard.TopPriceRecords != nil && newACNHTurnipPricesBoard.TopPriceRecords != nil {
-		if len(group.ACNHTurnipPricesBoard.TopPriceRecords) != len(newACNHTurnipPricesBoard.TopPriceRecords) {
-			changed = true
-		} else {
-			for i := 0; i < len(group.ACNHTurnipPricesBoard.TopPriceRecords); i++ {
-				if group.ACNHTurnipPricesBoard.TopPriceRecords[i].UserID != newACNHTurnipPricesBoard.TopPriceRecords[i].UserID {
-					changed = true
-					break
-				} else if group.ACNHTurnipPricesBoard.TopPriceRecords[i].Price != newACNHTurnipPricesBoard.TopPriceRecords[i].Price {
-					changed = true
-					break
-				}
-			}
-		}
-	}
+	changed = !group.ACNHTurnipPricesBoard.Equals(newACNHTurnipPricesBoard)
+	logrus.WithField("changed", changed).Debug("changed?")
 	if changed {
 		group.ACNHTurnipPricesBoard = newACNHTurnipPricesBoard
 		if err = group.Update(ctx); err != nil {
