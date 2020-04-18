@@ -86,6 +86,21 @@ func (u User) Delete(ctx context.Context) (err error) {
 	return
 }
 
+// AppendNSAccount delete NSAccount
+func (u User) AppendNSAccount(ctx context.Context, account NSAccount) (err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	co := client.Doc(u.Path)
+	_, err = co.Update(ctx, []firestore.Update{
+		{Path: "ns_accounts", Value: firestore.ArrayUnion(account)},
+	})
+	return
+}
+
 // DeleteNSAccount delete NSAccount
 func (u User) DeleteNSAccount(ctx context.Context, account NSAccount) (err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
@@ -98,6 +113,29 @@ func (u User) DeleteNSAccount(ctx context.Context, account NSAccount) (err error
 	_, err = co.Update(ctx, []firestore.Update{
 		{Path: "ns_accounts", Value: firestore.ArrayRemove(account)},
 	})
+	return
+}
+
+// DeleteNSAccountByIndex delete NSAccount by index
+func (u *User) DeleteNSAccountByIndex(ctx context.Context, idx int) (err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	account := u.NSAccounts[idx]
+	co := client.Doc(u.Path)
+	_, err = co.Update(ctx, []firestore.Update{
+		{Path: "ns_accounts", Value: firestore.ArrayRemove(account)},
+	})
+	i := idx
+	j := i + 1
+	copy(u.NSAccounts[i:], u.NSAccounts[j:])
+	for k, n := len(u.NSAccounts)-j+i, len(u.NSAccounts); k < n; k++ {
+		u.NSAccounts[k] = NSAccount{} // or the zero value of T
+	}
+	u.NSAccounts = u.NSAccounts[:len(u.NSAccounts)-j+i]
 	return
 }
 
@@ -120,12 +158,12 @@ func GetUser(ctx context.Context, userID int, groupID int64) (user *User, err er
 	if err = dsnap.DataTo(user); err != nil {
 		return nil, err
 	}
+	user.Path = fmt.Sprintf("users/%d", user.ID)
 	if groupID == 0 {
 		return user, nil
 	}
 	for _, gid := range user.GroupIDs {
 		if gid == groupID {
-			user.Path = fmt.Sprintf("users/%d", user.ID)
 			return user, nil
 		}
 	}

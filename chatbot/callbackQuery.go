@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,7 +21,13 @@ func (c ChatBot) HandleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	var err error
 	var result tgbotapi.CallbackConfig
 	var processed = false
-	if query.Data == "/queue" {
+	if strings.HasPrefix(query.Data, "/back/") {
+		processed = true
+		result, err = callbackQueryBack(query)
+	} else if query.Data == "/cancel" {
+		processed = true
+		result, err = callbackQueryCancel(query)
+	} else if query.Data == "/queue" {
 		processed = true
 		result, err = callbackQueryStartQueue(query)
 	} else if strings.HasPrefix(query.Data, "/updatepassword_") {
@@ -53,6 +60,12 @@ func (c ChatBot) HandleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	} else if strings.HasPrefix(query.Data, "/dismiss_") {
 		processed = true
 		result, err = callbackQueryDismissQueue(query)
+	} else if strings.HasPrefix(query.Data, "/manageFriendCodes") {
+		processed = true
+		result, err = callbackQueryManageFriendCodes(query)
+	} else if strings.HasPrefix(query.Data, "/delFC_") {
+		processed = true
+		result, err = callbackQueryDeleteFriendCode(query)
 	}
 	if processed {
 		if err != nil {
@@ -63,6 +76,43 @@ func (c ChatBot) HandleCallbackQuery(query *tgbotapi.CallbackQuery) {
 			c.TgBotClient.AnswerCallbackQuery(result)
 		}
 	}
+}
+
+func callbackQueryBack(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
+	cmdargstr := query.Data[5:]
+	_, err = tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(int64(query.From.ID), query.Message.MessageID))
+	if err != nil {
+		logrus.WithError(err).Error("back failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	query.Data = cmdargstr
+	if strings.HasPrefix(query.Data, "/manageFriendCodes") {
+		callbackConfig, err = callbackQueryManageFriendCodes(query)
+	} else {
+		err = errors.New("no_alert")
+	}
+	return
+}
+
+func callbackQueryCancel(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
+	_, err = tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(int64(query.From.ID), query.Message.MessageID))
+	if err != nil {
+		logrus.WithError(err).Error("cancel failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	return tgbotapi.CallbackConfig{
+		CallbackQueryID: query.ID,
+		Text:            "已取消",
+		ShowAlert:       false,
+	}, nil
 }
 
 func callbackQueryStartQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
@@ -807,6 +857,220 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 			"action": action}).Error("message send failed")
 		return
 	}
+	err = errors.New("no_alert")
+	return
+}
+
+func callbackQueryManageFriendCodes(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
+	if query.Data == "/manageFriendCodes" {
+		uid := query.From.ID
+		ctx := context.Background()
+		var u *storage.User
+		u, err = storage.GetUser(ctx, uid, 0)
+		if err != nil && status.Code(err) != codes.NotFound {
+			tgbot.Send(&tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              int64(uid),
+					DisableNotification: true},
+				Text: "查询FriendCode 记录时出错狸！"})
+			err = errors.New("no_alert")
+			return
+		}
+		if err != nil && status.Code(err) == codes.NotFound {
+			logrus.Debug("没有找到用户记录")
+			tgbot.Send(&tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              int64(uid),
+					DisableNotification: true},
+				Text: "没有找到您的记录，请先使用 addfc 命令添加记录"})
+			err = errors.New("no_alert")
+			return
+		}
+		var rows [][]tgbotapi.InlineKeyboardButton
+		for i, account := range u.NSAccounts {
+			var manageFCBtn = tgbotapi.NewInlineKeyboardButtonData(account.String(), fmt.Sprintf("/manageFriendCodes_%d_%d", uid, i))
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(manageFCBtn))
+		}
+		var cancelBtn = tgbotapi.NewInlineKeyboardButtonData("取消", "/cancel")
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(cancelBtn))
+		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
+		tgbot.Send(&tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:      int64(uid),
+				ReplyMarkup: replyMarkup,
+			},
+			Text: "请点击要管理的 Friend Code\n/addfc [id]:[FC] 添加新的 Friend Code"})
+	} else if strings.HasPrefix(query.Data, "/manageFriendCodes_") {
+		args := strings.Split(query.Data[19:], "_")
+		if len(args) != 2 {
+			logrus.WithError(err).Error("manage fc wrong parameters")
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "wrong parameters",
+				ShowAlert:       false,
+			}, nil
+		}
+		var uid int
+		uid, err = strconv.Atoi(args[0])
+		if err != nil {
+			logrus.WithError(err).Error("wrond uid")
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "wrong uid",
+				ShowAlert:       false,
+			}, nil
+		}
+		if uid != query.From.ID {
+			logrus.WithError(err).Error("wrond owner")
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "not your friend code",
+				ShowAlert:       false,
+			}, nil
+		}
+		var idx int
+		idx, err = strconv.Atoi(args[1])
+		if err != nil {
+			logrus.WithError(err).Error("wrond idx")
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "wrong index",
+				ShowAlert:       false,
+			}, nil
+		}
+		ctx := context.Background()
+		var u *storage.User
+		u, err = storage.GetUser(ctx, uid, 0)
+		if err != nil && status.Code(err) != codes.NotFound {
+			logrus.WithError(err).Error("query users Freind Code")
+			return
+		}
+		if err != nil && status.Code(err) == codes.NotFound {
+			logrus.WithError(err).Error("Freind Code not found")
+			return
+		}
+		var delFCBtn = tgbotapi.NewInlineKeyboardButtonData("删 FriendCode", fmt.Sprintf("/delFC_%d_%d", uid, idx))
+		var backBtn = tgbotapi.NewInlineKeyboardButtonData("返回", fmt.Sprintf("/back/manageFriendCodes"))
+		var cancelBtn = tgbotapi.NewInlineKeyboardButtonData("取消", "/cancel")
+		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(delFCBtn, backBtn, cancelBtn),
+		)
+		tgbot.Send(&tgbotapi.EditMessageTextConfig{
+			BaseEdit: tgbotapi.BaseEdit{
+				ChatID:      int64(uid),
+				MessageID:   query.Message.MessageID,
+				ReplyMarkup: &replyMarkup,
+			},
+			Text: fmt.Sprintf("要修改的FriendCode：%s", u.NSAccounts[idx].String())})
+	}
+	err = errors.New("no_alert")
+	return
+}
+
+func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
+	// /delFC_%uid_%idx
+	args := strings.Split(query.Data[7:], "_")
+	if len(args) != 2 {
+		logrus.WithError(err).Error("manage fc wrong parameters")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "wrong parameters",
+			ShowAlert:       false,
+		}, nil
+	}
+	var uid int
+	uid, err = strconv.Atoi(args[0])
+	if err != nil {
+		logrus.WithError(err).Error("wrond uid")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "wrong uid",
+			ShowAlert:       false,
+		}, nil
+	}
+	if uid != query.From.ID {
+		logrus.WithError(err).Error("wrond owner")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "not your friend code",
+			ShowAlert:       false,
+		}, nil
+	}
+	var idx int
+	idx, err = strconv.Atoi(args[1])
+	if err != nil {
+		logrus.WithError(err).Error("wrond idx")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "wrong index",
+			ShowAlert:       false,
+		}, nil
+	}
+	ctx := context.Background()
+	var u *storage.User
+	u, err = storage.GetUser(ctx, uid, 0)
+	if err != nil && status.Code(err) != codes.NotFound {
+		logrus.WithError(err).Error("query users Freind Code")
+		return
+	}
+	if err != nil && status.Code(err) == codes.NotFound {
+		logrus.WithError(err).Error("Freind Code not found")
+		return
+	}
+	u, err = storage.GetUser(ctx, uid, 0)
+	if err != nil && status.Code(err) != codes.NotFound {
+		tgbot.Send(&tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              int64(uid),
+				DisableNotification: true},
+			Text: "查询FriendCode 记录时出错狸！"})
+		err = errors.New("no_alert")
+		return
+	}
+	if err != nil && status.Code(err) == codes.NotFound {
+		logrus.Debug("没有找到用户记录")
+		tgbot.Send(&tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              int64(uid),
+				DisableNotification: true},
+			Text: "没有找到您的记录，请先使用 addfc 命令添加记录"})
+		err = errors.New("no_alert")
+		return
+	}
+	if len(u.NSAccounts) == 0 {
+		logrus.Debug("没有找到用户记录")
+		tgbot.Send(&tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              int64(uid),
+				DisableNotification: true},
+			Text: "没有找到您的记录，请先使用 addfc 命令添加记录"})
+		err = errors.New("no_alert")
+		return
+	}
+	err = u.DeleteNSAccountByIndex(ctx, idx)
+	if err != nil {
+		logrus.WithError(err).Error("DeleteNSAccountByIndex idx")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	var rows [][]tgbotapi.InlineKeyboardButton
+	for i, account := range u.NSAccounts {
+		var manageFCBtn = tgbotapi.NewInlineKeyboardButtonData(account.String(), fmt.Sprintf("/manageFriendCodes_%d_%d", uid, i))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(manageFCBtn))
+	}
+	var cancelBtn = tgbotapi.NewInlineKeyboardButtonData("取消", "/cancel")
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(cancelBtn))
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
+	tgbot.Send(&tgbotapi.EditMessageTextConfig{
+		BaseEdit: tgbotapi.BaseEdit{
+			ChatID:      int64(uid),
+			MessageID:   query.Message.MessageID,
+			ReplyMarkup: &replyMarkup,
+		},
+		Text: "请点击要管理的 Friend Code\n/addfc [id]:[FC] 添加新的 Friend Code"})
 	err = errors.New("no_alert")
 	return
 }

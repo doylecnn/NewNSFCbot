@@ -65,17 +65,25 @@ func cmdAddFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 		var accountNotExists []storage.NSAccount
 		var accountNeedUpdate bool = false
 		for _, a := range accounts {
+			var accountExists = false
+			var needEdit = false
 			for i, account := range u.NSAccounts {
-				if account.FC == a.FC {
-					if account.Name != a.Name {
-						accountNeedUpdate = true
-						u.NSAccounts[i].Name = a.Name
-					}
+				if account.FC == a.FC && account.Name == a.Name {
+					accountExists = true
+					break
+				} else if account.FC == a.FC && account.Name != a.Name {
+					accountExists = true
+					needEdit = true
+					u.NSAccounts[i] = a
 					break
 				}
 			}
-			accountNeedUpdate = true
-			accountNotExists = append(accountNotExists, a)
+			if !accountExists || needEdit {
+				accountNeedUpdate = true
+			}
+			if !accountExists && !needEdit {
+				accountNotExists = append(accountNotExists, a)
+			}
 		}
 		if accountNeedUpdate {
 			if len(accountNotExists) > 0 {
@@ -83,10 +91,13 @@ func cmdAddFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 			}
 			if err = u.Update(ctx); err != nil {
 				return nil, Error{InnerError: err,
-					ReplyText: fmt.Sprintf("更新用户信息时出错: %v", err),
-				}
+					ReplyText: fmt.Sprintf("更新用户信息时出错: %v", err)}
 			}
 		}
+	}
+
+	if message.Chat.IsPrivate() {
+		return cmdMyFC(message)
 	}
 
 	return []*tgbotapi.MessageConfig{{
@@ -185,16 +196,48 @@ func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig,
 				Text: "没有找到您的记录，请先使用 addfc 命令添加记录"}},
 			nil
 	}
+	if len(u.NSAccounts) == 0 {
+		return []*tgbotapi.MessageConfig{{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:              message.Chat.ID,
+					ReplyToMessageID:    message.MessageID,
+					DisableNotification: true},
+				Text: "没有找到您的记录，请先使用 addfc 命令添加记录"}},
+			nil
+	}
+
+	if message.Chat.IsPrivate() {
+		var rows [][]tgbotapi.InlineKeyboardButton
+		for i, account := range u.NSAccounts {
+			var manageFCBtn = tgbotapi.NewInlineKeyboardButtonData(account.String(), fmt.Sprintf("/manageFriendCodes_%d_%d", message.From.ID, i))
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(manageFCBtn))
+		}
+		var cancelBtn = tgbotapi.NewInlineKeyboardButtonData("取消", "/cancel")
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(cancelBtn))
+		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
+		return []*tgbotapi.MessageConfig{{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:      message.Chat.ID,
+				ReplyMarkup: replyMarkup,
+			},
+			Text: "请点击要管理的 Friend Code\n/addfc [id]:[FC] 添加新 Friend Code"}}, nil
+	}
 	var astr []string
 	for _, account := range u.NSAccounts {
 		astr = append(astr, account.String())
 	}
+	var manageFCBtn = tgbotapi.NewInlineKeyboardButtonData("管理 Friend Code", "/manageFriendCodes")
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(manageFCBtn))
+	var replyText = fmt.Sprintf("您的 Friend Code：\n%s\n您可私聊 bot 管理您的 FriendCode", strings.Join(astr, "\n"))
 	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
-				DisableNotification: true},
-			Text: strings.Join(astr, "\n")}},
+				DisableNotification: true,
+				ReplyMarkup:         replyMarkup,
+			},
+			Text: replyText,
+		}},
 		nil
 }
 
