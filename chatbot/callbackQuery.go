@@ -273,6 +273,10 @@ func callbackQueryShowQueueMembers(query *tgbotapi.CallbackQuery) (callbackConfi
 func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
 	queueID := query.Data[7:]
 	uid := query.From.ID
+	username := query.From.UserName
+	if len(username) == 0 {
+		username = query.From.FirstName
+	}
 	ctx := context.Background()
 	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
@@ -311,10 +315,27 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 		BaseEdit: tgbotapi.BaseEdit{
 			ChatID:    int64(uid),
 			MessageID: query.Message.MessageID},
-		Text: "已离开队列"})
+		Text: fmt.Sprintf("您已离开前往 %s 的队列", queue.Name)})
 	if err != nil {
 		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
 			"msgID": query.Message.MessageID}).Error("edit message failed")
+	}
+	sentMsg, err := tgbot.Send(tgbotapi.MessageConfig{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID: queue.OwnerID},
+		Text: fmt.Sprintf("%s 已离您的队列", username)})
+	if err != nil {
+		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+			"msgID": query.Message.MessageID}).Error("send leave message failed")
+	} else {
+		go func() {
+			time.Sleep(30 * time.Second)
+			_, err = tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(sentMsg.Chat.ID, sentMsg.MessageID))
+			if err != nil {
+				logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+					"msgID": query.Message.MessageID}).Error("delete leave message failed")
+			}
+		}()
 	}
 	return tgbotapi.CallbackConfig{
 		CallbackQueryID: query.ID,
@@ -391,6 +412,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 			ShowAlert:       false,
 		}, nil
 	}
+
 	var comingBtn = tgbotapi.NewInlineKeyboardButtonData("我来啦！"+queue.Name, "/coming_"+queue.ID)
 	var sorryBtn = tgbotapi.NewInlineKeyboardButtonData("抱歉来不了", "/sorry_"+queue.ID)
 	var doneBtn = tgbotapi.NewInlineKeyboardButtonData("我好了！", "/done_"+queue.ID)
@@ -403,7 +425,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 			ChatID:      chatID,
 			ReplyMarkup: replyMarkup,
 		},
-		Text:      fmt.Sprintf("轮到你了！\n密码：*%s*\n如果不能前往，请务必和岛主联系！", queue.Password),
+		Text:      fmt.Sprintf("轮到你了！\n密码：*%s*\n%s\n如果不能前往，请务必和岛主联系！", queue.Password, markdownSafe(queue.IslandInfo)),
 		ParseMode: "MarkdownV2",
 	})
 	if err != nil {
@@ -694,7 +716,7 @@ func callbackQueryComing(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi
 
 	action := "coming"
 	queueID := query.Data[8:]
-	replyText := fmt.Sprintf("@%s 兴奋的表示正在路上", name)
+	replyText := fmt.Sprintf("@%s 兴奋地表示正在路上", name)
 
 	uid := query.From.ID
 	ctx := context.Background()
@@ -784,11 +806,11 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 	if strings.HasPrefix(query.Data, "/done_") {
 		action = "done"
 		queueID = query.Data[6:]
-		replyText = fmt.Sprintf("@%s 满足的表示已经好了", name)
+		replyText = fmt.Sprintf("@%s 满足地表示已经好了", name)
 	} else if strings.HasPrefix(query.Data, "/sorry_") {
 		action = "sorry"
 		queueID = query.Data[7:]
-		replyText = fmt.Sprintf("@%s 遗憾的表示自己现在有事无法前来", name)
+		replyText = fmt.Sprintf("@%s 遗憾地表示自己现在有事无法前来", name)
 	}
 
 	uid := query.From.ID

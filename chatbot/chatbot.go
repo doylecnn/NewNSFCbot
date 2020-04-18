@@ -497,3 +497,11 @@ func (c ChatBot) RestartBot() {
 	}
 	c.SetWebhook()
 }
+
+func markdownSafe(text string) string {
+	var escapeCharacters = []string{"_", "*", "[", "]", "(", ")", "~", "`", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"}
+	for _, c := range escapeCharacters {
+		text = strings.ReplaceAll(text, c, fmt.Sprintf("\\%s", c))
+	}
+	return text
+}

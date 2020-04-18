@@ -543,9 +543,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 			ReplyText: "格式化一周报价时出错",
 		}
 	}
-	now := time.Now().In(island.Timezone.Location()).Format("2006-01-02 15:04:05 -0700")
-	now = strings.ReplaceAll(now, "-", "\\-")
-	now = strings.ReplaceAll(now, "+", "\\+")
+	now := markdownSafe(time.Now().In(island.Timezone.Location()).Format("2006-01-02 15:04:05 -0700"))
 	replyText = fmt.Sprintf("您的岛上时间：%s\n", now) + replyText
 	if message.Chat.IsPrivate() {
 		replyMessage = []*tgbotapi.MessageConfig{{
@@ -726,7 +724,7 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
-			Text:      strings.ReplaceAll(replyText, "-", "\\-"),
+			Text:      markdownSafe(replyText),
 			ParseMode: "MarkdownV2",
 		}},
 		nil
