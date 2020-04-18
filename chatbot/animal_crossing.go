@@ -848,6 +848,7 @@ func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	if len(query) == 0 {
 		return
 	}
+	var usermap map[string]struct{} = make(map[string]struct{})
 	var groupID int64 = message.Chat.ID
 	ctx := context.Background()
 	foundUsersByUserName, err := storage.GetUsersByName(ctx, query, groupID)
@@ -876,25 +877,37 @@ func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	}
 
 	var replyText string
-	if len(foundUsersByUserName) > 0 {
-		replyText += fmt.Sprintf("找到用户名为 %s 的用户和Ta的岛屿：\n%s\n", query, userInfo(foundUsersByUserName))
-	}
-
-	if len(foundUsersByNSAccountName) > 0 {
-		replyText += fmt.Sprintf("找到 NSAccount 为 %s 的用户和Ta的岛屿：\n%s\n", query, userInfo(foundUsersByNSAccountName))
-	}
-
-	if len(foundUsersByIslandName) > 0 {
-		replyText += fmt.Sprintf("找到 岛屿名称 为 %s 的用户和Ta的岛屿：\n%s\n", query, userInfo(foundUsersByIslandName))
-	}
-
-	if len(foundUserByOwnerName) > 0 {
-		replyText += fmt.Sprintf("找到 岛民代表名称 为 %s 的用户和Ta的岛屿：\n%s\n", query, userInfo(foundUserByOwnerName))
-	}
-
 	if len(foundUserByIslandInfo) > 0 {
-		replyText += fmt.Sprintf("找到 岛屿信息中包含近似内容 为 %s 的用户和Ta的岛屿：\n%s\n", query, userInfo(foundUserByIslandInfo))
+		formatedUserInfo := formatUserSearchResult(ctx, usermap, foundUserByIslandInfo)
+		if len(formatedUserInfo) > 0 {
+			replyText += fmt.Sprintf("找到 岛屿信息中包含近似内容 为 %s 的用户和Ta的岛屿：\n%s\n", query, formatedUserInfo)
+		}
 	}
+	if len(foundUserByOwnerName) > 0 {
+		formatedUserInfo := formatUserSearchResult(ctx, usermap, foundUserByOwnerName)
+		if len(formatedUserInfo) > 0 {
+			replyText += fmt.Sprintf("找到 岛民代表名称 为 %s 的用户和Ta的岛屿：\n%s\n", query, formatedUserInfo)
+		}
+	}
+	if len(foundUsersByIslandName) > 0 {
+		formatedUserInfo := formatUserSearchResult(ctx, usermap, foundUsersByIslandName)
+		if len(formatedUserInfo) > 0 {
+			replyText += fmt.Sprintf("找到 岛屿名称 为 %s 的用户和Ta的岛屿：\n%s\n", query, formatedUserInfo)
+		}
+	}
+	if len(foundUsersByNSAccountName) > 0 {
+		formatedUserInfo := formatUserSearchResult(ctx, usermap, foundUsersByNSAccountName)
+		if len(formatedUserInfo) > 0 {
+			replyText += fmt.Sprintf("找到 NSAccount 为 %s 的用户和Ta的岛屿：\n%s\n", query, formatedUserInfo)
+		}
+	}
+	if len(foundUsersByUserName) > 0 {
+		formatedUserInfo := formatUserSearchResult(ctx, usermap, foundUsersByUserName)
+		if len(formatedUserInfo) > 0 {
+			replyText += fmt.Sprintf("找到用户名为 %s 的用户和Ta的岛屿：\n%s\n", query, formatedUserInfo)
+		}
+	}
+
 	replyText = strings.TrimSpace(replyText)
 	if len(replyText) == 0 {
 		replyText = "没有找到狸。"
@@ -909,9 +922,24 @@ func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 		nil
 }
 
-func userInfo(users []*storage.User) (replyMessage string) {
+func formatUserSearchResult(ctx context.Context, usermap map[string]struct{}, users []*storage.User) (replyMessage string) {
 	var rst []string
 	for _, u := range users {
+		if _, ok := usermap[u.Name]; ok {
+			continue
+		}
+		usermap[u.Name] = struct{}{}
+		if u.Island.AirportIsOpen {
+			if time.Since(u.Island.OpenTime).Hours() > 24 {
+				u.Island.Close(ctx)
+				continue
+			}
+			now := time.Now().In(u.Island.Timezone.Location())
+			if now.Hour() > 5 && u.Island.OpenTime.In(u.Island.Timezone.Location()).Day() < now.Day() {
+				u.Island.Close(ctx)
+				continue
+			}
+		}
 		rst = append(rst, u.Name)
 		for _, a := range u.NSAccounts {
 			rst = append(rst, a.String())

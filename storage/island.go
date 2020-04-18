@@ -122,6 +122,26 @@ func (i Island) Update(ctx context.Context) (err error) {
 	return
 }
 
+// Close island
+func (i Island) Close(ctx context.Context) (err error) {
+	client, err := firestore.NewClient(ctx, ProjectID)
+	if err != nil {
+		return
+	}
+	defer client.Close()
+	if !i.AirportIsOpen {
+		return
+	}
+	if len(i.OnBoardQueueID) > 0 {
+		_, err = i.ClearOldOnboardQueue(ctx)
+		if err != nil {
+			return
+		}
+	}
+	i.AirportIsOpen = false
+	return i.Update(ctx)
+}
+
 // CreateOnboardQueue create onboard island queue
 func (i *Island) CreateOnboardQueue(ctx context.Context, uid int64, owner, password string) (queue *OnboardQueue, err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
