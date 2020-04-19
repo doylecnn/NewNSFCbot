@@ -3,6 +3,7 @@ package chatbot
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"cloud.google.com/go/firestore"
@@ -22,7 +23,25 @@ func cmdStart(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 		BaseChat: tgbotapi.BaseChat{
 			ChatID: message.Chat.ID,
 		},
-		Text: "队列主：\n/queue 密码 开启新的队列\n/myqueue 列出自己创建的队列\n/dismiss 解散自己创建的队列\n\n参与者：\n/list 列出自己加入的队列",
+		Text: `排队相关指令：
+岛主：
+/open 用于开发岛屿
+/open [本次开岛特色信息] 用于更新 本次开岛特色信息。
+/close 用于关闭岛屿
+/islandinfo 更新岛屿基本信息
+
+队列主：
+/queue [密码] 开启新的队列
+/queue [密码] [开岛说明] 开启新的队列，同时更新开岛说明
+/queue [密码] [开岛说明] [最大客人数] 开启新的队列，同时更新开岛说明，同时根据队列信息，半自动邀请下一位旅客（尚未实现）
+/myqueue 列出自己创建的队列
+/dismiss 解散自己创建的队列
+
+队列参与者：
+/list 列出自己加入的队列
+
+其它：
+/myfc 管理你登记的 Friend Code`,
 	}}, nil
 }
 
@@ -292,28 +311,41 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 	}
 
 	argstr := strings.TrimSpace(message.CommandArguments())
-	if len(argstr) == 0 {
-		return nil, Error{InnerError: err,
-			ReplyText: "/queue 需要一个参数，开岛密码。",
-		}
-	}
 	args := strings.Split(argstr, " ")
-	if len(args) != 1 {
+	if len(args) == 0 {
 		return nil, Error{InnerError: err,
-			ReplyText: "/queue 需要一个参数，开岛密码。",
+			ReplyText: "/queue 至少需要一个参数，开岛密码。",
 		}
 	}
 	password := args[0]
 	if len(password) != 5 {
 		return nil, Error{InnerError: err,
-			ReplyText: "动森岛屿密码必须是5位数字字母",
+			ReplyText: "请输入 Dodo Airlines 工作人员 莫里（Orville）提供的 5 位密码",
+		}
+	}
+	var specialInfo = ""
+	if len(args) >= 2 {
+		specialInfo = args[1]
+	}
+	var maxGuestCount = 0
+	if len(args) == 3 {
+		maxGuestCount, err = strconv.Atoi(args[2])
+		if err != nil {
+			return nil, Error{InnerError: err,
+				ReplyText: "第三个参数：同时登岛客人数必须是数字，取值范围 [1，7]",
+			}
+		}
+		if maxGuestCount < 1 || maxGuestCount > 7 {
+			return nil, Error{InnerError: err,
+				ReplyText: "第三个参数：同时登岛客人数必须是数字，取值范围 [1，7]",
+			}
 		}
 	}
 	owner := message.From.UserName
 	if len(owner) == 0 {
 		owner = message.From.FirstName
 	}
-	queue, err := island.CreateOnboardQueue(ctx, int64(message.From.ID), owner, password)
+	queue, err := island.CreateOnboardQueue(ctx, int64(message.From.ID), owner, password, specialInfo, maxGuestCount)
 	if err != nil {
 		logrus.WithError(err).Error("创建队列时出错")
 		return []*tgbotapi.MessageConfig{{

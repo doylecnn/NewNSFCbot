@@ -16,15 +16,17 @@ type persion struct {
 
 // OnboardQueue 登岛队列
 type OnboardQueue struct {
-	ID         string    `firestore:"-"`
-	Name       string    `firestore:"Name"`
-	OwnerID    int64     `firestore:"OwnerID"`
-	Owner      string    `firestore:"Owner"`
-	IslandInfo string    `firestore:"IslandInfo"`
-	Password   string    `firestore:"Password"`
-	Queue      []persion `firestore:"queue"` //private chat id
-	UIDs       []int64   `firestore:"uids"`
-	Dismissed  bool      `firestore:"Dismissed"`
+	ID             string    `firestore:"-"`
+	Name           string    `firestore:"Name"`
+	OwnerID        int64     `firestore:"OwnerID"`
+	Owner          string    `firestore:"Owner"`
+	IslandInfo     string    `firestore:"IslandInfo"`
+	CurrentOnBoard string    `firestore:"CurrentOnBoard"`
+	MaxGuestCount  int       `firestore:"MaxGuestCount"`
+	Password       string    `firestore:"Password"`
+	Queue          []persion `firestore:"queue"`
+	UIDs           []int64   `firestore:"uids"` //private chat id
+	Dismissed      bool      `firestore:"Dismissed"`
 }
 
 // GetJoinedQueue return joined onboard queue

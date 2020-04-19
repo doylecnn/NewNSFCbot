@@ -413,9 +413,9 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		}, nil
 	}
 
-	var comingBtn = tgbotapi.NewInlineKeyboardButtonData("我来啦！"+queue.Name, "/coming_"+queue.ID)
-	var sorryBtn = tgbotapi.NewInlineKeyboardButtonData("抱歉来不了", "/sorry_"+queue.ID)
-	var doneBtn = tgbotapi.NewInlineKeyboardButtonData("我好了！", "/done_"+queue.ID)
+	var comingBtn = tgbotapi.NewInlineKeyboardButtonData("准备起飞！"+queue.Name, "/coming_"+queue.ID)
+	var sorryBtn = tgbotapi.NewInlineKeyboardButtonData("抱歉不能来了……", "/sorry_"+queue.ID)
+	var doneBtn = tgbotapi.NewInlineKeyboardButtonData("我要回家啦！", "/done_"+queue.ID)
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(comingBtn),
 		tgbotapi.NewInlineKeyboardRow(doneBtn),
@@ -745,8 +745,8 @@ func callbackQueryComing(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi
 			ShowAlert:       false,
 		}, nil
 	}
-	var sorryBtn = tgbotapi.NewInlineKeyboardButtonData("抱歉来不了", "/sorry_"+queue.ID)
-	var doneBtn = tgbotapi.NewInlineKeyboardButtonData("我好了！", "/done_"+queue.ID)
+	var sorryBtn = tgbotapi.NewInlineKeyboardButtonData("抱歉不能来了", "/sorry_"+queue.ID)
+	var doneBtn = tgbotapi.NewInlineKeyboardButtonData("我要回家啦！", "/done_"+queue.ID)
 	var replyMarkup1 = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(doneBtn),
 		tgbotapi.NewInlineKeyboardRow(sorryBtn))
@@ -756,7 +756,7 @@ func callbackQueryComing(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi
 			MessageID:   query.Message.MessageID,
 			ReplyMarkup: &replyMarkup1,
 		},
-		Text:      fmt.Sprintf("轮到你了！\n密码：*%s*\n如果不能前往，请务必和岛主联系！\n如果好了也请通知一下岛主。", queue.Password),
+		Text:      fmt.Sprintf("轮到你了！\n密码：*%s*\n如果不能前往，请务必和岛主联系！\n如果回家了，也请通知一下岛主。", queue.Password),
 		ParseMode: "MarkdownV2",
 	})
 	if err != nil {

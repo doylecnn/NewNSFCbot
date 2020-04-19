@@ -139,18 +139,22 @@ func (i Island) Close(ctx context.Context) (err error) {
 		}
 	}
 	i.AirportIsOpen = false
+	i.Info = ""
 	return i.Update(ctx)
 }
 
 // CreateOnboardQueue create onboard island queue
-func (i *Island) CreateOnboardQueue(ctx context.Context, uid int64, owner, password string) (queue *OnboardQueue, err error) {
+func (i *Island) CreateOnboardQueue(ctx context.Context, uid int64, owner, password, specialInfo string, maxGuestCount int) (queue *OnboardQueue, err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
 	if err != nil {
 		return
 	}
 	defer client.Close()
 
-	queue = &OnboardQueue{Name: i.Name, OwnerID: uid, Owner: owner, Password: password, IslandInfo: i.ShortInfo()}
+	if len(specialInfo) >= 0 {
+		i.Info = specialInfo
+	}
+	queue = &OnboardQueue{Name: i.Name, OwnerID: uid, Owner: owner, Password: password, IslandInfo: i.ShortInfo(), MaxGuestCount: maxGuestCount}
 	err = client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		ref := client.Collection("onboardQueues").NewDoc()
 		queue.ID = ref.ID

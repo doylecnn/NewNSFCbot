@@ -51,29 +51,29 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 
 	tgbot = bot
 
-	var botHelpText = `/addfc 添加你的fc，可批量添加：/addfc id1:fc1;id2:fc2……
-/delfc [fc] 用于删除已登记的FC
-/myfc 显示自己的所有fc
-/sfc 搜索你回复或at 的人的fc
-/fc 与sfc 相同
-/fclist 列出本群所有人的fc 列表
-/whois name 查找NSAccount/Island是 name 的用户
-/addisland 添加你的动森岛屿：/addisland 岛名 N/S 岛主 岛屿简介等信息
-/islandinfo 更新你的动森岛屿基本信息和简介：/updateBaseInfo 简介
-/settimezone 设置岛屿所在的时区，[-12:00, +12:00]
-/sac 搜索你回复或at 的人的AnimalCrossing 信息
-/myisland 显示自己的岛信息
-/open 开放自己的岛 命令后可以附上岛屿今日特色内容
-/close 关闭自己的岛
-/dtcj 更新大头菜价格, 不带参数时，和 /gj 相同
-/weekprice 当周菜价回看/预测
-/gj 大头菜最新价格，只显示同群中价格从高到低前10
-/ghs 搞化石交换用的登记spreadsheet链接
-/islands 提供网页展示本bot 记录的所有动森岛屿信息
-/login 登录到本bot 的web 界面，更方便查看信息
-/help 查看本帮助信息`
+	var commandsText = `/addfc 添加你的fc，可批量添加：/addfc id1:fc1;id2:fc2……
+	/delfc [fc] 用于删除已登记的FC
+	/myfc 显示/管理自己的所有fc
+	/sfc 搜索你回复或at 的人的fc
+	/fclist 列出本群所有人的fc 列表
+	/whois name 查找NSAccount/Island是 name 的用户
+	/addisland 添加你的动森岛屿：/addisland 岛名 N/S 岛主 岛屿简介等信息
+	/islandinfo 更新你的动森岛屿基本信息和简介：/updateBaseInfo 简介
+	/settimezone 设置岛屿所在的时区，[-12:00, +12:00]
+	/sac 搜索你回复或at 的人的AnimalCrossing 信息
+	/myisland 显示自己的岛信息
+	/open 开放自己的岛 命令后可以附上岛屿今日特色内容
+	/close 关闭自己的岛
+	/dtcj 更新大头菜价格, 不带参数时，和 /gj 相同
+	/weekprice 当周菜价回看/预测
+	/gj 大头菜最新价格，只显示同群中价格从高到低前10
+	/islands 提供网页展示本bot 记录的所有动森岛屿信息
+	/login 登录到本bot 的web 界面，更方便查看信息
+	/help 查看本帮助信息`
+
+	var botHelpText = `大部分指令可以通过私聊 @NS_FC_bot 使用。` + commandsText
 	var botCommands []BotCommand
-	scanner := bufio.NewScanner(strings.NewReader(botHelpText))
+	scanner := bufio.NewScanner(strings.NewReader(commandsText))
 	scanner.Split(bufio.ScanLines)
 	for scanner.Scan() {
 		sep := strings.SplitN(scanner.Text(), " ", 2)
