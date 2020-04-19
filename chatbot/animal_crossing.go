@@ -934,10 +934,11 @@ func formatUserSearchResult(ctx context.Context, usermap map[string]struct{}, us
 				u.Island.Close(ctx)
 				continue
 			}
-			now := time.Now().In(u.Island.Timezone.Location())
-			if now.Hour() > 5 && u.Island.OpenTime.In(u.Island.Timezone.Location()).Day() < now.Day() {
+			locOpenTime := u.Island.OpenTime.In(u.Island.Timezone.Location())
+			locNow := time.Now().In(u.Island.Timezone.Location())
+			if locNow.Hour() >= 5 && (locOpenTime.Hour() >= 0 && locOpenTime.Hour() < 5 ||
+				locNow.Day()-locOpenTime.Day() >= 1) {
 				u.Island.Close(ctx)
-				continue
 			}
 		}
 		rst = append(rst, u.Name)

@@ -68,9 +68,16 @@ func (w Web) Islands(c *gin.Context) {
 				if !strings.HasSuffix(island.Name, "岛") {
 					island.Name += "岛"
 				}
-				user.Island = island
 				priceOutDate = append(priceOutDate, time.Since(island.LastPrice.Date) > 12*time.Hour)
-
+				if island.AirportIsOpen {
+					locOpenTime := island.OpenTime.In(island.Timezone.Location())
+					locNow := time.Now().In(island.Timezone.Location())
+					if locNow.Hour() >= 5 && (locOpenTime.Hour() >= 0 && locOpenTime.Hour() < 5 ||
+						locNow.Day()-locOpenTime.Day() >= 1) {
+						island.Close(ctx)
+					}
+				}
+				user.Island = island
 				haveIslandUsers = append(haveIslandUsers, *user)
 			}
 			c.HTML(200, "islands.html", gin.H{

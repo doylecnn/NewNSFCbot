@@ -87,6 +87,14 @@ func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Isla
 		island.LastPrice.Timezone /= 1000000000
 		needUpdate = true
 	}
+	if island.AirportIsOpen {
+		locOpenTime := island.OpenTime.In(island.Timezone.Location())
+		locNow := time.Now().In(island.Timezone.Location())
+		if locNow.Hour() >= 5 && (locOpenTime.Hour() >= 0 && locOpenTime.Hour() < 5 ||
+			locNow.Day()-locOpenTime.Day() >= 1) {
+			island.Close(ctx)
+		}
+	}
 	if needUpdate {
 		island.Update(ctx)
 	}
@@ -123,15 +131,12 @@ func (i Island) Update(ctx context.Context) (err error) {
 }
 
 // Close island
-func (i Island) Close(ctx context.Context) (err error) {
+func (i *Island) Close(ctx context.Context) (err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
 	if err != nil {
 		return
 	}
 	defer client.Close()
-	if !i.AirportIsOpen {
-		return
-	}
 	if len(i.OnBoardQueueID) > 0 {
 		_, err = i.ClearOldOnboardQueue(ctx)
 		if err != nil {
