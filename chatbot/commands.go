@@ -248,7 +248,10 @@ func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 	args := strings.TrimSpace(message.CommandArguments())
 	ctx := context.Background()
 	var us []*storage.User
-	if message.ReplyToMessage != nil && message.ReplyToMessage.From.ID != message.From.ID {
+	if message.ReplyToMessage != nil {
+		if message.ReplyToMessage.From.ID == message.From.ID {
+			return cmdMyFC(message)
+		}
 		var groupID int64 = message.Chat.ID
 		u, err := storage.GetUser(ctx, message.ReplyToMessage.From.ID, groupID)
 		if err != nil {
@@ -264,7 +267,10 @@ func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 		if u != nil {
 			us = []*storage.User{u}
 		}
-	} else if len(args) > 1 && strings.HasPrefix(args, "@") && args[1:] != message.From.UserName {
+	} else if len(args) > 1 && strings.HasPrefix(args, "@") {
+		if args[1:] == message.From.UserName {
+			return cmdMyFC(message)
+		}
 		var groupID int64 = message.Chat.ID
 		us, err = storage.GetUsersByName(ctx, args[1:], groupID)
 		if err != nil {

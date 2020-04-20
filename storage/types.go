@@ -523,8 +523,8 @@ func (r *ACNHTurnipPricesBoardRecord) Equals(other *ACNHTurnipPricesBoardRecord)
 
 //ACNHTurnipPricesBoard ACNH_TurnipPricesBoard
 type ACNHTurnipPricesBoard struct {
-	TopPriceRecords   []*ACNHTurnipPricesBoardRecord `firestore:"top_price_records"`
-	LowestPriceRecord *ACNHTurnipPricesBoardRecord   `firestore:"lowest_price_record"`
+	TopPriceRecords    []*ACNHTurnipPricesBoardRecord `firestore:"top_price_records"`
+	LowestPriceRecords []*ACNHTurnipPricesBoardRecord `firestore:"lowest_price_records"`
 }
 
 //Equals 判等
@@ -532,8 +532,16 @@ func (b *ACNHTurnipPricesBoard) Equals(other *ACNHTurnipPricesBoard) (rst bool) 
 	if b == nil || other == nil {
 		return false
 	}
-	if !b.LowestPriceRecord.Equals(other.LowestPriceRecord) {
+	if b.LowestPriceRecords == nil || other.LowestPriceRecords == nil {
 		return false
+	}
+	if len(b.LowestPriceRecords) != len(other.LowestPriceRecords) {
+		return false
+	}
+	for i := 0; i < len(b.LowestPriceRecords); i++ {
+		if !b.LowestPriceRecords[i].Equals(other.LowestPriceRecords[i]) {
+			return false
+		}
 	}
 	if b.TopPriceRecords == nil || other.TopPriceRecords == nil {
 		return false

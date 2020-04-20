@@ -196,6 +196,7 @@ func cmdUpdateIslandBaseInfo(message *tgbotapi.Message) (replyMessage []*tgbotap
 }
 
 func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+	uid := message.From.ID
 	args := strings.TrimSpace(message.CommandArguments())
 	if len(args) == 0 {
 		return
@@ -232,6 +233,7 @@ func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.M
 			ReplyText: "更新时区时出错狸",
 		}
 	}
+	oldtimezone := island.Timezone
 	island.Timezone = timezone
 	if err = island.Update(ctx); err != nil {
 		logrus.WithError(err).Error("更新时区时出错狸")
@@ -239,12 +241,43 @@ func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.M
 			ReplyText: "更新时区时出错狸",
 		}
 	}
+	//updateWeekPrice
+	var weekStartDateUTC = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
+	var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 0, 0, 0, 0, oldtimezone.Location())
+	var weekStartDate = weekStartDateLoc.UTC()
+	var weekEndDate = weekStartDate.AddDate(0, 0, 7)
+	oldPriceHistory, err := storage.GetWeeklyDTCPriceHistory(ctx, uid, weekStartDate, weekEndDate)
+
+	var weekPrices []string = make([]string, 13)
+	for _, p := range oldPriceHistory {
+		if p != nil {
+			var j = int(p.LocationDateTime().Weekday())
+			if j == 0 {
+				weekPrices[j] = strconv.Itoa(p.Price)
+			} else if p.LocationDateTime().Hour() < 12 {
+				weekPrices[j*2-1] = strconv.Itoa(p.Price)
+			} else {
+				weekPrices[j*2] = strconv.Itoa(p.Price)
+			}
+		}
+	}
+	var datePrice []string = make([]string, 7)
+	datePrice[0] = weekPrices[0]
+	for i := 1; i < 13; i += 2 {
+		datePrice[(i+1)/2] = fmt.Sprintf("%s/%s", weekPrices[i], weekPrices[i+1])
+	}
+	weekpriceStr := strings.TrimFunc(strings.Join(datePrice, " "), func(r rune) bool { return r == ' ' || r == '/' })
+	_, err = getWeeklyDTCPriceHistory(ctx, message, uid, weekpriceStr)
+	if err != nil {
+		logrus.WithError(err).WithField("weekprice", weekpriceStr).Error("updateweekprice error")
+	}
+
 	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
-			Text: "更新了岛屿时区：\n" + island.Timezone.String()}},
+			Text: fmt.Sprintf("更新了岛屿时区：\n%s\n由于改动了时区，请使用 /weekprice 检查周报价是否正确。", island.Timezone.String())}},
 		nil
 }
 
@@ -414,6 +447,21 @@ func cmdListIslands(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 
 func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	pricestr := strings.TrimSpace(message.CommandArguments())
+	uid := message.From.ID
+	if message.From.ID == botAdminID && message.Chat.IsPrivate() {
+		if strings.HasPrefix(pricestr, "#") {
+			args := strings.SplitN(pricestr, " ", 2)
+			uid, err = strconv.Atoi(args[0][1:])
+			if err != nil {
+				return
+			}
+			if len(args) > 1 {
+				pricestr = args[1]
+			} else {
+				pricestr = ""
+			}
+		}
+	}
 	if len(pricestr) == 0 {
 		return cmdDTCMaxPriceInGroup(message)
 	}
@@ -424,8 +472,6 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 			ReplyText: "只接受[1-999]之间的正整数报价狸",
 		}
 	}
-
-	uid := message.From.ID
 
 	ctx := context.Background()
 	err = storage.UpdateDTCPrice(ctx, uid, int(price))
@@ -444,18 +490,24 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 
 // cmdDTCWeekPriceAndPredict 当周菜价回看/预测
 func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
-	args := strings.TrimSpace(message.CommandArguments())
+	argstr := strings.TrimSpace(message.CommandArguments())
 	uid := message.From.ID
-	if message.From.ID == botAdminID && strings.HasPrefix(args, "#") {
-		uid, err = strconv.Atoi(args[1:])
+	if message.From.ID == botAdminID && message.Chat.IsPrivate() && strings.HasPrefix(argstr, "#") {
+		args := strings.SplitN(argstr, " ", 2)
+		uid, err = strconv.Atoi(args[0][1:])
 		if err != nil {
 			uid = message.From.ID
+			argstr = ""
 		} else {
-			args = ""
+			if len(args) > 1 {
+				argstr = args[1]
+			} else {
+				argstr = ""
+			}
 		}
 	}
 	ctx := context.Background()
-	return getWeeklyDTCPriceHistory(ctx, message, uid, args)
+	return getWeeklyDTCPriceHistory(ctx, message, uid, argstr)
 }
 
 func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, uid int, argstr string) (replyMessage []*tgbotapi.MessageConfig, err error) {
@@ -490,43 +542,25 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 			ReplyText: "查找报价信息时出错狸",
 		}
 	}
-	if priceHistory != nil && len(priceHistory) > 0 {
-		client, err := firestore.NewClient(ctx, _projectID)
-		if err != nil {
-			logrus.WithError(err).Error("cmdDTCWeekPriceAndPredict")
-			return nil, Error{InnerError: err,
-				ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
-			}
-		}
-		defer client.Close()
-		col := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid))
-		if err = storage.DeleteCollection(ctx, client, col, 10); err != nil {
-			logrus.WithError(err).Error("cmdDTCWeekPriceAndPredict")
-			return nil, Error{InnerError: err,
-				ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
-			}
-		}
-		if l := len(prices); prices != nil || l > 0 {
-			var i, j int = 0, 0
-			for ; i < l; i++ {
-				if j < len(priceHistory) {
-					ophd := priceHistory[j].LocationDateTime()
-					nphd := prices[i].LocationDateTime()
-					if nphd.Weekday() == ophd.Weekday() &&
-						((nphd.Hour() >= 8 && nphd.Hour() < 12 &&
-							ophd.Hour() < 12) ||
-							(nphd.Hour() >= 12 && nphd.Hour() < 21 &&
-								ophd.Hour() >= 12)) {
-						priceHistory[j] = prices[i]
-					} else {
-						priceHistory = append(priceHistory, nil)
-						copy(priceHistory[j+1:], priceHistory[j:])
-					}
-					j++
+	if len(prices) > 0 {
+		if priceHistory != nil && len(priceHistory) > 0 {
+			client, err := firestore.NewClient(ctx, _projectID)
+			if err != nil {
+				logrus.WithError(err).Error("cmdDTCWeekPriceAndPredict NewClient")
+				return nil, Error{InnerError: err,
+					ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
 				}
 			}
+			defer client.Close()
+			col := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid))
+			if err = storage.DeleteCollection(ctx, client, col, 10); err != nil {
+				logrus.WithError(err).Error("cmdDTCWeekPriceAndPredict")
+				return nil, Error{InnerError: err,
+					ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
+				}
+			}
+			priceHistory = priceHistory[0:0:0]
 		}
-	} else {
 		priceHistory = append(priceHistory, prices...)
 	}
 	for _, ph := range priceHistory {
@@ -543,8 +577,9 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 			ReplyText: "格式化一周报价时出错",
 		}
 	}
-	now := markdownSafe(time.Now().In(island.Timezone.Location()).Format("2006-01-02 15:04:05 -0700"))
-	replyText = fmt.Sprintf("您的岛上时间：%s\n", now) + replyText
+	locNow := time.Now().In(island.Timezone.Location())
+	formatedNow := markdownSafe(locNow.Format("2006-01-02 15:04:05 -0700"))
+	replyText = fmt.Sprintf("您的岛上时间：%s\n", formatedNow) + replyText
 	if message.Chat.IsPrivate() {
 		replyMessage = []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
@@ -558,7 +593,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 		}}
 		return
 	}
-	topPriceUsers, lowestPriceUser, changed, err := getTopPriceUsersAndLowestPriceUser(ctx, message.Chat.ID)
+	_, _, changed, err := getTopPriceUsersAndLowestPriceUser(ctx, message.Chat.ID, locNow)
 	if err != nil {
 		replyMessage = []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
@@ -574,6 +609,8 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 	}
 	if !changed {
 		replyText = "*您本次的报价对高价排行无影响*\n" + replyText
+	} else {
+		replyText = "*您本次的报价对高价排行有影响，请使用指令 /gj 查看*\n" + replyText
 	}
 	replyMessage = []*tgbotapi.MessageConfig{{
 		BaseChat: tgbotapi.BaseChat{
@@ -585,29 +622,6 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 		ParseMode:             "MarkdownV2",
 		DisableWebPagePreview: false,
 	}}
-	if changed {
-		var dtcPrices []string
-		for i, u := range topPriceUsers {
-			if u != nil {
-				dtcPrices = append(dtcPrices, formatIslandDTCPrice(u, i+1))
-			}
-		}
-
-		replyText2 := fmt.Sprintf("*今日高价（前 %d）：*\n%s", len(dtcPrices), strings.Join(dtcPrices, "\n"))
-
-		if lowestPriceUser != nil {
-			replyText2 += "\n*今日最低：*\n" + formatIslandDTCPrice(lowestPriceUser, -1)
-		}
-		replyMessage = append(replyMessage, &tgbotapi.MessageConfig{
-			BaseChat: tgbotapi.BaseChat{
-				ChatID:              message.Chat.ID,
-				ReplyToMessageID:    message.MessageID,
-				DisableNotification: true,
-			},
-			Text:      replyText2,
-			ParseMode: "MarkdownV2",
-		})
-	}
 	return replyMessage, nil
 }
 
@@ -643,7 +657,7 @@ func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, en
 	}
 	for i := 0; i < len(intPrice); i++ {
 		if i == 0 {
-			priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i], Timezone: islandTimezone})
+			priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate.Add(5 * time.Hour), Price: intPrice[i], Timezone: islandTimezone})
 			startDate = startDate.AddDate(0, 0, 1)
 		} else {
 			if i%2 == 1 {
@@ -689,11 +703,35 @@ func formatWeekPrices(priceHistory []*storage.PriceHistory) (text string, err er
 }
 
 func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
-	if message.Chat.IsPrivate() {
+	if message.Chat.IsPrivate() && message.From.ID != botAdminID {
 		return
 	}
+	chatid := message.Chat.ID
+	uid := message.From.ID
+	localtime := time.Now()
 	ctx := context.Background()
-	topPriceUsers, lowestPriceUser, _, err := getTopPriceUsersAndLowestPriceUser(ctx, message.Chat.ID)
+	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
+	if err != nil {
+		localtime = localtime.In(time.FixedZone("+0800", 8*3600))
+	} else {
+		localtime = localtime.In(island.Timezone.Location())
+	}
+	if message.From.ID == botAdminID && message.Chat.IsPrivate() && strings.HasPrefix(message.CommandArguments(), "#") {
+		argstr := message.CommandArguments()
+		args := strings.SplitN(argstr, " ", 2)
+		chatid, err = strconv.ParseInt(args[0][1:], 10, 64)
+		if err != nil {
+			chatid = message.Chat.ID
+		} else {
+			if len(args) > 1 {
+				localtime, err = time.Parse("2006-01-02 15:04:05", args[1])
+				if err != nil {
+					logrus.WithError(err).WithField("input date", args[1]).Debug("error")
+				}
+			}
+		}
+	}
+	topPriceUsers, lowestPriceUsers, _, err := getTopPriceUsersAndLowestPriceUser(ctx, chatid, localtime)
 	if err != nil {
 		if err.Error() == "NoValidPrice" {
 			return []*tgbotapi.MessageConfig{{
@@ -706,31 +744,57 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 		}
 		return
 	}
-	var dtcPrices []string
-	for i, u := range topPriceUsers {
-		if u != nil {
-			dtcPrices = append(dtcPrices, formatIslandDTCPrice(u, i+1))
+	var replyText string
+	if localtime.Weekday() == 0 {
+		var lowestDTCPrices []string
+		for i, u := range lowestPriceUsers {
+			if u != nil {
+				lowestDTCPrices = append(lowestDTCPrices, formatIslandDTCPrice(u, i+1))
+			}
+		}
+		replyText = fmt.Sprintf("*今日低进价（前 %d）：*\n%s", len(lowestDTCPrices), strings.Join(lowestDTCPrices, "\n"))
+		if len(lowestPriceUsers) > 0 {
+			var dtcPrices []string
+			for i, u := range topPriceUsers {
+				if u != nil {
+					dtcPrices = append(dtcPrices, formatIslandDTCPrice(u, i+1))
+				}
+			}
+			replyText += fmt.Sprintf("\n*今日最高进价：*\n%s", strings.Join(dtcPrices, "\n"))
+		}
+	} else {
+		var dtcPrices []string
+		for i, u := range topPriceUsers {
+			if u != nil {
+				dtcPrices = append(dtcPrices, formatIslandDTCPrice(u, i+1))
+			}
+		}
+		replyText = fmt.Sprintf("*今日高卖价（前 %d）：*\n%s", len(dtcPrices), strings.Join(dtcPrices, "\n"))
+		if len(lowestPriceUsers) > 0 {
+			var lowestDTCPrices []string
+			for i, u := range lowestPriceUsers {
+				if u != nil {
+					lowestDTCPrices = append(lowestDTCPrices, formatIslandDTCPrice(u, i+1))
+				}
+			}
+			replyText += fmt.Sprintf("\n*今日最低卖价：*\n%s", strings.Join(lowestDTCPrices, "\n"))
 		}
 	}
 
-	replyText := fmt.Sprintf("*今日高价（前 %d）：*\n%s", len(dtcPrices), strings.Join(dtcPrices, "\n"))
-
-	if lowestPriceUser != nil {
-		replyText += "\n*今日最低：*\n" + formatIslandDTCPrice(lowestPriceUser, -1)
-	}
-
+	replyText = strings.ReplaceAll(replyText, "+", "\\+")
+	replyText = strings.ReplaceAll(replyText, "-", "\\-")
 	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
-			Text:      markdownSafe(replyText),
+			Text:      replyText,
 			ParseMode: "MarkdownV2",
 		}},
 		nil
 }
 
-func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64) (topPriceUsers []*storage.User, lowestPriceUser *storage.User, changed bool, err error) {
+func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, localtime time.Time) (topPriceUsers []*storage.User, lowestPriceUsers []*storage.User, changed bool, err error) {
 	group, err := storage.GetGroup(ctx, chatID)
 	if err != nil {
 		logrus.WithError(err).Error("GetGroup")
@@ -751,15 +815,15 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64) (topP
 		if island.LastPrice.Price <= 0 || island.LastPrice.Price > 999 {
 			continue
 		}
-		var h = island.LastPrice.LocationDateTime().Hour()
-		if time.Since(island.LastPrice.Date) > 24*time.Hour {
-			//logrus.WithFields(logrus.Fields{"price": island.LastPrice.Price, "date": island.LastPrice.LocationDateTime()}).Debug("outdate")
+		var localDate = island.LastPrice.LocationDateTime()
+		var h = localDate.Hour()
+		if localtime.Sub(localDate) > 24*time.Hour || localtime.Sub(localDate) < 0 {
 			continue
-		} else if h >= 8 && h < 12 && time.Since(island.LastPrice.Date) > 4*time.Hour {
+		} else if h >= 8 && h < 12 && localtime.Sub(localDate) > 4*time.Hour {
 			continue
-		} else if h >= 12 && h < 22 && time.Since(island.LastPrice.Date) > 10*time.Hour {
+		} else if h >= 12 && h < 22 && localtime.Sub(localDate) > 10*time.Hour {
 			continue
-		} else if h >= 0 && h < 8 || h >= 22 && h < 24 {
+		} else if localDate.Weekday() > 0 && (h >= 0 && h < 8 || h >= 22 && h < 24) {
 			continue
 		}
 		if !strings.HasSuffix(island.Name, "岛") {
@@ -772,34 +836,58 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64) (topP
 	if len(priceUsers) == 0 {
 		return nil, nil, false, errors.New("NoValidPrice")
 	}
-	sort.Slice(priceUsers, func(i, j int) bool {
-		return priceUsers[i].Island.LastPrice.Price > priceUsers[j].Island.LastPrice.Price
-	})
 
-	count := 5
+	topPriceCount := 5
+	lowestPriceCount := 1
+	if localtime.Weekday() == 0 {
+		topPriceCount = 1
+		lowestPriceCount = 5
+	}
 	l := len(priceUsers)
 	var topRecords = []*storage.ACNHTurnipPricesBoardRecord{}
-	var lowestRecord *storage.ACNHTurnipPricesBoardRecord
-	if l > count {
-		for i := count; i < l; i++ {
-			if priceUsers[i].Island.LastPrice.Price < 500 {
-				count = i
-				break
+	var lowestRecords = []*storage.ACNHTurnipPricesBoardRecord{}
+	if localtime.Weekday() > 0 {
+		sort.Slice(priceUsers, func(i, j int) bool {
+			return priceUsers[i].Island.LastPrice.Price > priceUsers[j].Island.LastPrice.Price
+		})
+		if l > topPriceCount {
+			for i := topPriceCount; i < l; i++ {
+				if priceUsers[i].Island.LastPrice.Price < 500 {
+					topPriceCount = i
+					break
+				}
 			}
+			topPriceUsers = priceUsers[:topPriceCount]
+			lowestPriceUsers = priceUsers[l-1 : l]
+		} else {
+			topPriceUsers = priceUsers
 		}
-		topPriceUsers = priceUsers[:count]
 	} else {
-		topPriceUsers = priceUsers
+		sort.Slice(priceUsers, func(i, j int) bool {
+			return priceUsers[i].Island.LastPrice.Price < priceUsers[j].Island.LastPrice.Price
+		})
+		if l > lowestPriceCount {
+			for i := lowestPriceCount; i < l; i++ {
+				if priceUsers[i].Island.LastPrice.Price > 90 {
+					lowestPriceCount = i
+					break
+				}
+			}
+			lowestPriceUsers = priceUsers[:lowestPriceCount]
+			topPriceUsers = priceUsers[l-1 : l]
+		} else {
+			lowestPriceUsers = priceUsers
+		}
 	}
+
 	for _, u := range topPriceUsers {
 		topRecords = append(topRecords, &storage.ACNHTurnipPricesBoardRecord{UserID: u.ID, Price: u.Island.LastPrice.Price})
 	}
-	if l > count {
-		lowestPriceUser = priceUsers[l-1]
-		lowestRecord = &storage.ACNHTurnipPricesBoardRecord{UserID: lowestPriceUser.ID, Price: lowestPriceUser.Island.LastPrice.Price}
+	for _, u := range lowestPriceUsers {
+		lowestRecords = append(lowestRecords, &storage.ACNHTurnipPricesBoardRecord{UserID: u.ID, Price: u.Island.LastPrice.Price})
 	}
 
-	newACNHTurnipPricesBoard := &storage.ACNHTurnipPricesBoard{TopPriceRecords: topRecords, LowestPriceRecord: lowestRecord}
+	newACNHTurnipPricesBoard := &storage.ACNHTurnipPricesBoard{TopPriceRecords: topRecords, LowestPriceRecords: lowestRecords}
 	changed = !group.ACNHTurnipPricesBoard.Equals(newACNHTurnipPricesBoard)
 	logrus.WithField("changed", changed).Debug("changed?")
 	if changed {
@@ -817,8 +905,8 @@ func formatIslandDTCPrice(user *storage.User, rank int) string {
 	}
 	var priceTimeout int // minutes
 	var timeoutOrCloseDoor string
+	d := user.Island.LastPrice.LocationDateTime()
 	{
-		d := user.Island.LastPrice.LocationDateTime()
 		H := d.Hour()
 		var HH int = 0
 		if H >= 8 && H < 12 {
@@ -832,10 +920,16 @@ func formatIslandDTCPrice(user *storage.User, rank int) string {
 		priceTimeout = int(shift.UTC().Sub(time.Now()).Minutes())
 	}
 	var formatedString string
-	if rank == -1 {
-		formatedString = fmt.Sprintf("*%s*的 *%s* 菜价：*%d*，*%d* 分钟后*%s*。", user.Name, user.Island.Name, user.Island.LastPrice.Price, priceTimeout, timeoutOrCloseDoor)
+	if d.Weekday() == 0 {
+		if time.Now().In(user.Island.Timezone.Location()).Hour() < 12 {
+			shift := time.Date(d.Year(), d.Month(), d.Day(), 12, 0, 0, 0, user.Island.LastPrice.Timezone.Location())
+			priceTimeout = int(shift.UTC().Sub(time.Now()).Minutes())
+			formatedString = fmt.Sprintf("%d\\. %s的 %s 菜价：__%d__，曹卖可能于%d 分钟后*离开*。", rank, markdownSafe(user.Name), markdownSafe(user.Island.Name), user.Island.LastPrice.Price, priceTimeout)
+		} else {
+			formatedString = fmt.Sprintf("%d\\. %s的 %s 菜价：__%d__，曹卖可能*已离开*。", rank, markdownSafe(user.Name), markdownSafe(user.Island.Name), user.Island.LastPrice.Price)
+		}
 	} else {
-		formatedString = fmt.Sprintf("%d\\. *%s*的 *%s* 菜价：*%d*，*%d* 分钟后*%s*。", rank, user.Name, user.Island.Name, user.Island.LastPrice.Price, priceTimeout, timeoutOrCloseDoor)
+		formatedString = fmt.Sprintf("%d\\. %s的 %s 菜价：__%d__，将于%d 分钟后*%s*。", rank, markdownSafe(user.Name), markdownSafe(user.Island.Name), user.Island.LastPrice.Price, priceTimeout, timeoutOrCloseDoor)
 	}
 	return formatedString
 }

@@ -66,7 +66,7 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 	/close 关闭自己的岛
 	/dtcj 更新大头菜价格, 不带参数时，和 /gj 相同
 	/weekprice 当周菜价回看/预测
-	/gj 大头菜最新价格，只显示同群中价格从高到低前10
+	/gj 大头菜最新价格，通常只显示同群中价格从高到低前5名
 	/islands 提供网页展示本bot 记录的所有动森岛屿信息
 	/login 登录到本bot 的web 界面，更方便查看信息
 	/help 查看本帮助信息`
@@ -300,7 +300,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 							Text: err.ReplyText}
 						sentM, err := c.TgBotClient.Send(replyMessage)
 						if err != nil {
-							logrus.WithError(err).Error("send message failed")
+							logrus.WithError(err).WithField("message", replyMessage.Text).Error("send message failed")
 						} else {
 							if cacheForEdit != nil {
 								sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
@@ -321,7 +321,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 								Text: replyMessages[0].Text}
 							_, err := c.TgBotClient.Send(fm)
 							if err != nil {
-								logrus.WithError(err).Error("send message failed")
+								logrus.WithError(err).WithField("message", fm.Text).Error("send message failed")
 							}
 						}
 					} else {
@@ -343,7 +343,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 											Text: replyMessage.Text[offset : offset+remain]}
 										sentM, err := c.TgBotClient.Send(fm)
 										if err != nil {
-											logrus.WithError(err).Error("send message failed")
+											logrus.WithError(err).WithField("message", fm.Text).Error("send message failed")
 										} else if replyMessage.ChatID == message.Chat.ID && !message.Chat.IsPrivate() {
 											if cacheForEdit != nil {
 												sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
@@ -356,7 +356,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 								} else {
 									sentM, err := c.TgBotClient.Send(*replyMessage)
 									if err != nil {
-										logrus.WithError(err).Error("send message failed")
+										logrus.WithError(err).WithField("message", replyMessage.Text).Error("send message failed")
 									} else if replyMessage.ChatID == message.Chat.ID && !message.Chat.IsPrivate() {
 										if cacheForEdit != nil {
 											sentMessageIDs = append(sentMessageIDs, sentM.MessageID)

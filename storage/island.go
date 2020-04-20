@@ -370,7 +370,9 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 	if island.Timezone != 0 {
 		islandLoc := island.Timezone.Location()
 		loc := now.In(islandLoc)
-		if loc.Hour() >= 8 && loc.Hour() < 12 {
+		if loc.Weekday() == 0 {
+			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 5, 0, 0, 0, islandLoc).UTC()
+		} else if loc.Hour() >= 8 && loc.Hour() < 12 {
 			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 8, 0, 0, 0, islandLoc).UTC()
 		} else if loc.Hour() < 8 || loc.Hour() >= 12 {
 			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 12, 0, 0, 0, islandLoc).UTC()
@@ -385,7 +387,11 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 	if lp != nil {
 		lpd := lp.LocationDateTime()
 		pd := priceHistory.LocationDateTime()
-		if lpd.Day() == pd.Day() && ((lpd.Hour() >= 8 && lpd.Hour() < 12 && pd.Hour() == 8) || (lpd.Hour() >= 12 && lpd.Hour() < 8 && pd.Hour() == 12)) {
+		if lpd.Day() == pd.Day() &&
+			((lpd.Weekday() == 0 && pd.Weekday() == 0) ||
+				(lpd.Weekday() > 0 && pd.Weekday() > 0 &&
+					(lpd.Hour() >= 8 && lpd.Hour() < 12 && pd.Hour() == 8) ||
+					(lpd.Hour() >= 12 && lpd.Hour() < 8 && pd.Hour() == 12))) {
 			if err = lp.Delete(ctx); err != nil {
 				logrus.WithError(err).Error("Delete old price")
 				return
