@@ -678,7 +678,24 @@ func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, en
  *	| - | -/105 | -/- | -/- | -/- | -/- | -/- |
  *	未录入星期日数据 无法生成查询数据 */
 func formatWeekPrices(priceHistory []*storage.PriceHistory) (text string, err error) {
-	var weekPrices []string = []string{"\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-", "\\-"}
+	var weekPrices []string = weekPriceStrings(priceHistory)
+	var datePrice []string = make([]string, 7)
+	datePrice[0] = weekPrices[0]
+	for i := 1; i < 13; i += 2 {
+		datePrice[(i+1)/2] = fmt.Sprintf("%s/%s", weekPrices[i], weekPrices[i+1])
+	}
+	urlpath := strings.TrimRight(strings.Join(weekPrices, "\\-"), ",\\-")
+	return fmt.Sprintf("本周您的[报价](https://ac-turnip.com/p-%s.png)如下: 可以 [点我](https://ac-turnip.com/#%s) 查询本周价格趋势\n"+
+		"\\| Sun \\| Mon \\| Tue \\| Wed \\| Thu \\| Fri \\| Sat \\|\n"+
+		"\\| %s \\|", urlpath, urlpath, strings.Join(datePrice, " \\| ")), nil
+}
+
+func formatWeekPricesURL(priceHistory []*storage.PriceHistory) (text string) {
+	return fmt.Sprintf("https://ac-turnip.com/p-%s.png", strings.TrimRight(strings.Join(weekPriceStrings(priceHistory), "\\-"), ",\\-"))
+}
+
+func weekPriceStrings(priceHistory []*storage.PriceHistory) (weekPrices []string) {
+	weekPrices = make([]string, 13)
 	for _, p := range priceHistory {
 		if p != nil {
 			var j = int(p.LocationDateTime().Weekday())
@@ -691,15 +708,7 @@ func formatWeekPrices(priceHistory []*storage.PriceHistory) (text string, err er
 			}
 		}
 	}
-	var datePrice []string = make([]string, 7)
-	datePrice[0] = weekPrices[0]
-	for i := 1; i < 13; i += 2 {
-		datePrice[(i+1)/2] = fmt.Sprintf("%s/%s", weekPrices[i], weekPrices[i+1])
-	}
-	urlpath := strings.TrimRight(strings.Join(weekPrices, "\\-"), ",\\-")
-	return fmt.Sprintf("本周您的[报价](https://ac-turnip.com/p-%s.png)如下: 可以 [点我](https://ac-turnip.com/#%s) 查询本周价格趋势\n"+
-		"\\| Sun \\| Mon \\| Tue \\| Wed \\| Thu \\| Fri \\| Sat \\|\n"+
-		"\\| %s \\|", urlpath, urlpath, strings.Join(datePrice, " \\| ")), nil
+	return
 }
 
 func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
@@ -829,6 +838,19 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 		if !strings.HasSuffix(island.Name, "岛") {
 			island.Name += "岛"
 		}
+		var weekStartDateUTC = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
+		var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 0, 0, 0, 0, island.Timezone.Location())
+		var weekStartDate = weekStartDateLoc.UTC()
+		var weekEndDate = weekStartDate.AddDate(0, 0, 7)
+		island.WeekPriceHistory, err = storage.GetWeeklyDTCPriceHistory(ctx, u.ID, weekStartDate, weekEndDate)
+		if err != nil {
+			logrus.WithError(err).WithFields(logrus.Fields{
+				"uid":              u.ID,
+				"weekStart":        weekStartDate.Format("2006-01-02 15:04:05 -0700"),
+				"weekEndDate":      weekStartDate.Format("2006-01-02 15:04:05 -0700"),
+				"weekStartDateLoc": weekStartDateLoc.Format("2006-01-02 15:04:05 -0700"),
+			}).Error("GetWeeklyDTCPriceHistory")
+		}
 		u.Island = island
 		priceUsers = append(priceUsers, u)
 	}
@@ -929,7 +951,8 @@ func formatIslandDTCPrice(user *storage.User, rank int) string {
 			formatedString = fmt.Sprintf("%d\\. %s的 %s 菜价：__%d__，曹卖可能*已离开*。", rank, markdownSafe(user.Name), markdownSafe(user.Island.Name), user.Island.LastPrice.Price)
 		}
 	} else {
-		formatedString = fmt.Sprintf("%d\\. %s的 %s 菜价：__%d__，将于%d 分钟后*%s*。", rank, markdownSafe(user.Name), markdownSafe(user.Island.Name), user.Island.LastPrice.Price, priceTimeout, timeoutOrCloseDoor)
+		url := formatWeekPricesURL(user.Island.WeekPriceHistory)
+		formatedString = fmt.Sprintf("%d\\. %s的 %s 菜价：[%d](%s)，将于%d 分钟后*%s*。", rank, markdownSafe(user.Name), markdownSafe(user.Island.Name), user.Island.LastPrice.Price, url, priceTimeout, timeoutOrCloseDoor)
 	}
 	return formatedString
 }

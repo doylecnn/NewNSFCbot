@@ -42,20 +42,21 @@ func (t Timezone) String() string {
 
 // Island in AnimalCrossing
 type Island struct {
-	Path             string       `firestore:"-"`
-	Name             string       `firestore:"name"`
-	NameInsensitive  string       `firestore:"name_insensitive,omitempty"`
-	Hemisphere       int          `firestore:"hemisphere"`
-	AirportIsOpen    bool         `firestore:"AirportIsOpen"`
-	OpenTime         time.Time    `firestore:"OpenTime,omitempty"`
-	BaseInfo         string       `firestore:"BaseInfo"`
-	Info             string       `firestore:"Info"`
-	OnBoardQueueID   string       `firestore:"OnBoardQueueID"`
-	Timezone         Timezone     `filestore:"timezone"`
-	Fruits           []string     `firestore:"Fruits,omitempty"`
-	LastPrice        PriceHistory `firestore:"LastPrice,omitempty"`
-	Owner            string       `firestore:"owner,omitempty"`
-	OwnerInsensitive string       `firestore:"owner_insensitive,omitempty"`
+	Path             string          `firestore:"-"`
+	Name             string          `firestore:"name"`
+	NameInsensitive  string          `firestore:"name_insensitive,omitempty"`
+	Hemisphere       int             `firestore:"hemisphere"`
+	AirportIsOpen    bool            `firestore:"AirportIsOpen"`
+	OpenTime         time.Time       `firestore:"OpenTime,omitempty"`
+	BaseInfo         string          `firestore:"BaseInfo"`
+	Info             string          `firestore:"Info"`
+	OnBoardQueueID   string          `firestore:"OnBoardQueueID"`
+	Timezone         Timezone        `filestore:"timezone"`
+	Fruits           []string        `firestore:"Fruits,omitempty"`
+	LastPrice        PriceHistory    `firestore:"LastPrice,omitempty"`
+	Owner            string          `firestore:"owner,omitempty"`
+	OwnerInsensitive string          `firestore:"owner_insensitive,omitempty"`
+	WeekPriceHistory []*PriceHistory `firestore:"-"`
 }
 
 // GetAnimalCrossingIslandByUserID get island by user id
