@@ -691,7 +691,7 @@ func formatWeekPrices(priceHistory []*storage.PriceHistory) (text string, err er
 }
 
 func formatWeekPricesURL(priceHistory []*storage.PriceHistory) (text string) {
-	return fmt.Sprintf("https://ac-turnip.com/p-%s.png", strings.TrimRight(strings.Join(weekPriceStrings(priceHistory), "\\-"), ",\\-"))
+	return fmt.Sprintf("https://ac-turnip.com/#%s", strings.TrimRight(strings.Join(weekPriceStrings(priceHistory), "-"), ",-"))
 }
 
 func weekPriceStrings(priceHistory []*storage.PriceHistory) (weekPrices []string) {
@@ -797,8 +797,9 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
 				DisableNotification: true},
-			Text:      replyText,
-			ParseMode: "MarkdownV2",
+			Text:                  replyText,
+			ParseMode:             "MarkdownV2",
+			DisableWebPagePreview: true,
 		}},
 		nil
 }

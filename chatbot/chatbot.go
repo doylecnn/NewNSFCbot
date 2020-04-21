@@ -90,6 +90,17 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 		} else {
 			logrus.WithFields(logrus.Fields{"result": resp.Result}).Info("setMyCommands")
 		}
+	} else if err == nil && len(cmds) == len(botCommands) {
+		for i := 0; i < len(cmds); i++ {
+			if cmds[i].Command != botCommands[i].Command || cmds[i].Description != botCommands[i].Description {
+				if resp, err := setMyCommands(botCommands); err != nil {
+					logrus.WithError(err).Warn("setMyCommands")
+				} else {
+					logrus.WithFields(logrus.Fields{"result": resp.Result}).Info("setMyCommands")
+				}
+				break
+			}
+		}
 	}
 
 	router := NewRouter()
