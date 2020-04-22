@@ -84,6 +84,14 @@ func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 			}
 		}
 	}
+	logrus.WithFields(logrus.Fields{
+		"command":          message.Command(),
+		"args":             message.CommandArguments(),
+		"receive datetime": message.Time().Format("2016-01-02 15:04:05 -0700"),
+		"UID":              message.From.ID,
+		"ChatID":           message.Chat.ID,
+		"FromUser":         message.From.UserName,
+	}).Info("receive command")
 	cmd := message.Command()
 	if c, ok := r.commands[cmd]; ok {
 		replies, e := c(message)

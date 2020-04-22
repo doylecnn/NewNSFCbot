@@ -189,13 +189,25 @@ func (c ChatBot) SetWebhook() (err error) {
 		var webhookConfig WebhookConfig
 		var wc = tgbotapi.NewWebhook(fmt.Sprintf("https://%s.appspot.com/%s", c.appID, c.token))
 		webhookConfig = WebhookConfig{WebhookConfig: wc}
-		webhookConfig.MaxConnections = 10
+		webhookConfig.MaxConnections = 20
 		webhookConfig.AllowedUpdates = []string{"message", "edited_message", "inline_query", "callback_query"}
-		_, err = c.setWebhook(webhookConfig)
+		var apiResp tgbotapi.APIResponse
+		apiResp, err = c.setWebhook(webhookConfig)
 		if err != nil {
 			logrus.WithError(err).Error("SetWebhook failed")
 			return
 		}
+		fields := logrus.Fields{
+			"desc":      apiResp.Description,
+			"errorCode": apiResp.ErrorCode,
+			"OK":        apiResp.Ok,
+			"result":    apiResp.Result,
+		}
+		if apiResp.Parameters != nil {
+			fields["MigrateToChatID"] = apiResp.Parameters.MigrateToChatID
+			fields["RetryAfter"] = apiResp.Parameters.RetryAfter
+		}
+		logrus.WithFields(fields).Info("set webhook success")
 	}
 	return
 }
@@ -260,18 +272,40 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 					}
 				}
 				messageSendTime := message.Time()
-				if !isEditedMessage && time.Since(messageSendTime).Seconds() > 30 {
-					logrus.Infof("old message dropped: %s", message.Text)
+				if !isEditedMessage && time.Since(messageSendTime).Seconds() > 60 {
+					logrus.WithFields(logrus.Fields{
+						"command":          message.Command(),
+						"args":             message.CommandArguments(),
+						"receive datetime": message.Time().Format("2016-01-02 15:04:05 -0700"),
+						"UID":              message.From.ID,
+						"ChatID":           message.Chat.ID,
+						"FromUser":         message.From.UserName,
+					}).Info("old message dropped")
+
 					continue
 				}
 				if isEditedMessage {
 					if time.Since(messageSendTime).Minutes() > 2 {
-						logrus.Infof("old message dropped: %s", message.Text)
+						logrus.WithFields(logrus.Fields{
+							"command":          message.Command(),
+							"args":             message.CommandArguments(),
+							"receive datetime": message.Time().Format("2016-01-02 15:04:05 -0700"),
+							"UID":              message.From.ID,
+							"ChatID":           message.Chat.ID,
+							"FromUser":         message.From.UserName,
+						}).Info("old message dropped")
 						continue
 					}
 					var editTime = time.Unix(int64(message.EditDate), 0)
-					if time.Since(editTime).Seconds() > 30 {
-						logrus.Infof("old message dropped: %s", message.Text)
+					if time.Since(editTime).Seconds() > 60 {
+						logrus.WithFields(logrus.Fields{
+							"command":          message.Command(),
+							"args":             message.CommandArguments(),
+							"receive datetime": message.Time().Format("2016-01-02 15:04:05 -0700"),
+							"UID":              message.From.ID,
+							"ChatID":           message.Chat.ID,
+							"FromUser":         message.From.UserName,
+						}).Info("old message dropped")
 						continue
 					}
 				}
@@ -494,6 +528,7 @@ func (c ChatBot) deleteWebhook() (tgbotapi.APIResponse, error) {
 func (c ChatBot) RestartBot() {
 	info, err := c.TgBotClient.GetWebhookInfo()
 	if err != nil {
+		logrus.WithError(err).Error("GetWebhookInfo")
 		return
 	}
 	if info.LastErrorDate != 0 {
@@ -502,8 +537,19 @@ func (c ChatBot) RestartBot() {
 	if info.IsSet() {
 		var resp tgbotapi.APIResponse
 		if resp, err = c.deleteWebhook(); err != nil {
-			logrus.WithError(err).Error(resp)
-			return
+			logrus.WithError(err).Error(c.deleteWebhook)
+		} else {
+			fields := logrus.Fields{
+				"desc":      resp.Description,
+				"errorCode": resp.ErrorCode,
+				"OK":        resp.Ok,
+				"result":    resp.Result,
+			}
+			if resp.Parameters != nil {
+				fields["MigrateToChatID"] = resp.Parameters.MigrateToChatID
+				fields["RetryAfter"] = resp.Parameters.RetryAfter
+			}
+			logrus.WithFields(fields).Info("delete webhook success")
 		}
 	}
 	c.SetWebhook()

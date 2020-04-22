@@ -68,6 +68,7 @@ func NewWeb(token, domain, appID, projectID, port string, adminID int, bot chatb
 		admin.GET("/export/:userid", web.export)
 		admin.GET("/botrestart", func(c *gin.Context) {
 			bot.RestartBot()
+			c.JSON(http.StatusOK, "OK")
 		})
 	}
 
