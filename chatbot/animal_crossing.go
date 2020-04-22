@@ -1047,7 +1047,7 @@ func formatUserSearchResult(ctx context.Context, usermap map[string]struct{}, us
 			continue
 		}
 		usermap[u.Name] = struct{}{}
-		if u.Island.AirportIsOpen {
+		if u.Island != nil && u.Island.AirportIsOpen {
 			if time.Since(u.Island.OpenTime).Hours() > 24 {
 				u.Island.Close(ctx)
 				continue
