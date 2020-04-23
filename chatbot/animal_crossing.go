@@ -685,13 +685,13 @@ func formatWeekPrices(priceHistory []*storage.PriceHistory) (text string, err er
 		datePrice[(i+1)/2] = fmt.Sprintf("%s/%s", weekPrices[i], weekPrices[i+1])
 	}
 	urlpath := strings.TrimRight(strings.Join(weekPrices, "\\-"), ",\\-")
-	return fmt.Sprintf("本周您的[报价](https://ac-turnip.com/p-%s.png)如下: 可以 [点我](https://ac-turnip.com/#%s) 查询本周价格趋势\n"+
+	return fmt.Sprintf("本周您的[报价](https://ac-turnip.com/p-%s.png)如下: 可以 [点我](https://ac-turnip.com/share?f=%s) 查询本周价格趋势\n"+
 		"\\| Sun \\| Mon \\| Tue \\| Wed \\| Thu \\| Fri \\| Sat \\|\n"+
 		"\\| %s \\|", urlpath, urlpath, strings.Join(datePrice, " \\| ")), nil
 }
 
 func formatWeekPricesURL(priceHistory []*storage.PriceHistory) (text string) {
-	return fmt.Sprintf("https://ac-turnip.com/#%s", strings.TrimRight(strings.Join(weekPriceStrings(priceHistory), "-"), ",-"))
+	return fmt.Sprintf("https://ac-turnip.com/share?f=%s", strings.TrimRight(strings.Join(weekPriceStrings(priceHistory), "-"), ",-"))
 }
 
 func weekPriceStrings(priceHistory []*storage.PriceHistory) (weekPrices []string) {
