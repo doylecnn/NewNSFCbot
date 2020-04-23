@@ -648,7 +648,7 @@ func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, en
 		}
 		for _, p := range ps {
 			ip, err = strconv.Atoi(p)
-			if ip < 1 || ip > 999 || err != nil {
+			if ip < 0 || ip > 999 || err != nil {
 				return nil, errors.New("wrong format")
 
 			}
@@ -657,15 +657,21 @@ func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, en
 	}
 	for i := 0; i < len(intPrice); i++ {
 		if i == 0 {
-			priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate.Add(5 * time.Hour), Price: intPrice[i], Timezone: islandTimezone})
+			if intPrice[i] > 0 {
+				priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate.Add(5 * time.Hour), Price: intPrice[i], Timezone: islandTimezone})
+			}
 			startDate = startDate.AddDate(0, 0, 1)
 		} else {
 			if i%2 == 1 {
 				startDate = startDate.Add(8 * time.Hour)
-				priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i], Timezone: islandTimezone})
+				if intPrice[i] > 0 {
+					priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i], Timezone: islandTimezone})
+				}
 			} else {
 				startDate = startDate.Add(4 * time.Hour)
-				priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i], Timezone: islandTimezone})
+				if intPrice[i] > 0 {
+					priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i], Timezone: islandTimezone})
+				}
 				startDate = startDate.Add(12 * time.Hour)
 			}
 		}
