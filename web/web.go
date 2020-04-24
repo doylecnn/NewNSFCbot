@@ -17,10 +17,14 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/sirupsen/logrus"
 	"github.com/thinkerou/favicon"
+	ginlogrus "github.com/toorop/gin-logrus"
 )
+
+var _logger *logrus.Logger
 
 // Web is web
 type Web struct {
+	Logger      *logrus.Logger
 	APPID       string
 	Domain      string
 	Port        string
@@ -32,11 +36,14 @@ type Web struct {
 }
 
 // NewWeb return new Web
-func NewWeb(token, domain, appID, projectID, port string, adminID int, bot chatbot.ChatBot) (web Web, updates chan tgbotapi.Update) {
+func NewWeb(token, domain, appID, projectID, port string, adminID int, bot chatbot.ChatBot, logger *logrus.Logger) (web Web, updates chan tgbotapi.Update) {
+	_logger = logger
 	gin.SetMode(gin.ReleaseMode)
-	r := gin.Default()
+	r := gin.New()
+	r.Use(ginlogrus.Logger(logger), gin.Recovery())
 	secretKey := sha256.Sum256([]byte(token))
 	web = Web{
+		Logger:      logger,
 		APPID:       appID,
 		Domain:      domain,
 		Port:        port,
@@ -56,7 +63,7 @@ func NewWeb(token, domain, appID, projectID, port string, adminID int, bot chatb
 	r.GET("/auth", web.Auth)
 	r.GET("/login", web.Login)
 
-	authorized := r.Group("/", middleware.TelegramAuth(secretKey))
+	authorized := r.Group("/", middleware.TelegramAuth(secretKey, _logger))
 	{
 		authorized.GET("/user/:userid", web.User)
 		authorized.GET("/islands", web.Islands)
@@ -146,7 +153,7 @@ func (w Web) export(c *gin.Context) {
 			authData, _ := c.Cookie("auth_data_str")
 			userID, err := middleware.GetAuthDataInfo(authData, "id")
 			if err != nil {
-				logrus.WithError(err).Error("auth failed")
+				_logger.WithError(err).Error("auth failed")
 				c.Abort()
 				return
 			}
@@ -154,7 +161,7 @@ func (w Web) export(c *gin.Context) {
 			if userID == userid {
 				uid, err := strconv.ParseInt(userid, 10, 64)
 				if err != nil {
-					logrus.WithError(err).Error("auth failed")
+					_logger.WithError(err).Error("auth failed")
 					c.Abort()
 					return
 				}
@@ -162,7 +169,7 @@ func (w Web) export(c *gin.Context) {
 					ctx := context.Background()
 					us, err := storage.GetAllUsers(ctx)
 					if err != nil {
-						logrus.WithError(err).Error("auth failed")
+						_logger.WithError(err).Error("auth failed")
 						c.Abort()
 						return
 					}
@@ -228,12 +235,12 @@ func (w Web) export(c *gin.Context) {
 					c.SecureJSON(http.StatusOK, userinfos)
 					return
 				}
-				logrus.Error("not admin")
+				_logger.Error("not admin")
 				c.Abort()
 				return
 
 			}
-			logrus.Error("not admin")
+			_logger.Error("not admin")
 			c.Abort()
 			return
 		}

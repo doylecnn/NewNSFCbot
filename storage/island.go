@@ -70,7 +70,7 @@ func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Isla
 	dsnap, err := client.Doc(islandDocPath).Get(ctx)
 	if err != nil {
 		if status.Code(err) != codes.NotFound {
-			logrus.Warnf("failed when get island: %v", err)
+			Logger.Warnf("failed when get island: %v", err)
 		}
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func (i Island) Update(ctx context.Context) (err error) {
 		return
 	}
 	defer client.Close()
-	logrus.WithFields(logrus.Fields{
+	Logger.WithFields(logrus.Fields{
 		"name":     i.Name,
 		"owner":    i.Owner,
 		"timezone": i.Timezone,
@@ -175,7 +175,7 @@ func (i *Island) CreateOnboardQueue(ctx context.Context, uid int64, owner, passw
 		}, firestore.MergeAll)
 	})
 	if err != nil {
-		logrus.WithError(err).Info("An error has occurred when CreateOnboardQueue")
+		Logger.WithError(err).Info("An error has occurred when CreateOnboardQueue")
 	}
 	return
 }
@@ -232,7 +232,7 @@ func (i *Island) ClearOldOnboardQueue(ctx context.Context) (queue *OnboardQueue,
 		return err
 	})
 	if err != nil {
-		logrus.WithError(err).Info("An error has occurred when ClearOldOnboardQueue")
+		Logger.WithError(err).Info("An error has occurred when ClearOldOnboardQueue")
 	}
 	return
 }
@@ -252,7 +252,7 @@ func (i Island) ShortInfo() string {
 	if len(i.BaseInfo) == 0 {
 		i.BaseInfo = strings.Join(i.Fruits, ", ")
 		if err := i.Update(context.Background()); err != nil {
-			logrus.WithError(err).Error()
+			Logger.WithError(err).Error()
 		}
 	}
 	var text string = fmt.Sprintf("位于%s半球%s时区的岛屿：%s, 岛民代表：%s。 %s\n基本信息：%s\n\n", hemisphere, i.Timezone.String(), i.Name, i.Owner, airportstatus, i.BaseInfo)
@@ -283,7 +283,7 @@ func (i Island) String() string {
 	if len(i.BaseInfo) == 0 {
 		i.BaseInfo = strings.Join(i.Fruits, ", ")
 		if err := i.Update(context.Background()); err != nil {
-			logrus.WithError(err).Error()
+			Logger.WithError(err).Error()
 		}
 	}
 	var text string = fmt.Sprintf("位于%s半球%s时区的岛屿：%s, 岛民代表：%s。 %s\n基本信息：%s\n\n", hemisphere, i.Timezone.String(), i.Name, i.Owner, airportstatus, i.BaseInfo)
@@ -357,13 +357,13 @@ func (p PriceHistory) LocationDateTime() (datetime time.Time) {
 func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 	island, err := GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
-		logrus.WithError(err).Error("GetAnimalCrossingIslandByUserID")
+		Logger.WithError(err).Error("GetAnimalCrossingIslandByUserID")
 		return
 	}
 	lp, err := GetLastPriceHistory(ctx, uid, island.LastPrice.Date)
 	if err != nil {
 		if err.Error() != "NotFound" && status.Code(err) != codes.NotFound {
-			logrus.WithError(err).Error("GetLastPriceHistory")
+			Logger.WithError(err).Error("GetLastPriceHistory")
 			return
 		}
 	}
@@ -382,7 +382,7 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 	priceHistory := PriceHistory{Date: now, Price: price, Timezone: island.Timezone}
 	island.LastPrice = priceHistory
 	if err = island.Update(ctx); err != nil {
-		logrus.WithError(err).Error("update island last price")
+		Logger.WithError(err).Error("update island last price")
 		return
 	}
 	if lp != nil {
@@ -394,7 +394,7 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 					(lpd.Hour() >= 8 && lpd.Hour() < 12 && pd.Hour() == 8) ||
 					(lpd.Hour() >= 12 && lpd.Hour() < 8 && pd.Hour() == 12))) {
 			if err = lp.Delete(ctx); err != nil {
-				logrus.WithError(err).Error("Delete old price")
+				Logger.WithError(err).Error("Delete old price")
 				return
 			}
 		}
@@ -466,7 +466,7 @@ func getPriceHistory(ctx context.Context, client *firestore.Client, uid int, pat
 		}
 		var price *PriceHistory = &PriceHistory{}
 		if err = doc.DataTo(price); err != nil {
-			logrus.Warn(err)
+			Logger.Warn(err)
 			return nil, err
 		}
 		price.Path = fmt.Sprintf("users/%d/games/animal_crossing/price_history/%d", uid, price.Date.Unix())
@@ -494,7 +494,7 @@ func GetWeeklyDTCPriceHistory(ctx context.Context, uid int, startDate, endDate t
 		}
 		var price *PriceHistory = &PriceHistory{}
 		if err = doc.DataTo(price); err != nil {
-			logrus.Warn(err)
+			Logger.Warn(err)
 			return nil, err
 		}
 		price.Path = fmt.Sprintf("users/%d/games/animal_crossing/price_history/%d", uid, price.Date.Unix())

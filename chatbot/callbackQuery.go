@@ -70,7 +70,7 @@ func (c ChatBot) HandleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	if processed {
 		if err != nil {
 			if err.Error() != "no_alert" {
-				logrus.Warn(err)
+				c.Logger.Warn(err)
 			}
 		} else {
 			c.TgBotClient.AnswerCallbackQuery(result)
@@ -82,7 +82,7 @@ func callbackQueryBack(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.C
 	cmdargstr := query.Data[5:]
 	_, err = tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(int64(query.From.ID), query.Message.MessageID))
 	if err != nil {
-		logrus.WithError(err).Error("back failed")
+		_logger.WithError(err).Error("back failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -101,7 +101,7 @@ func callbackQueryBack(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.C
 func callbackQueryCancel(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
 	_, err = tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(int64(query.From.ID), query.Message.MessageID))
 	if err != nil {
-		logrus.WithError(err).Error("cancel failed")
+		_logger.WithError(err).Error("cancel failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -122,7 +122,7 @@ func callbackQueryStartQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 		},
 		Text: "请使用指令 /queue [密码] 创建队列\n创建完成后请分享到其它聊天中邀请大家排队。"})
 	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{"uid": query.From.ID,
+		_logger.WithError(err).WithFields(logrus.Fields{"uid": query.From.ID,
 			"msgID": query.Message.MessageID}).Error("send message failed")
 	}
 	return tgbotapi.CallbackConfig{
@@ -138,7 +138,7 @@ func callbackQueryUpdateQueuePassword(query *tgbotapi.CallbackQuery) (callbackCo
 	ctx := context.Background()
 	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
-		logrus.WithError(err).Error("query island failed")
+		_logger.WithError(err).Error("query island failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -147,7 +147,7 @@ func callbackQueryUpdateQueuePassword(query *tgbotapi.CallbackQuery) (callbackCo
 	}
 
 	if island.OnBoardQueueID != queueID {
-		logrus.WithError(err).Error("not island owner")
+		_logger.WithError(err).Error("not island owner")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "你不能操作别人的队列",
@@ -156,7 +156,7 @@ func callbackQueryUpdateQueuePassword(query *tgbotapi.CallbackQuery) (callbackCo
 	}
 	queue, err := island.GetOnboardQueue(ctx)
 	if err != nil {
-		logrus.WithError(err).Error("query queue failed")
+		_logger.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -193,7 +193,7 @@ func callbackQueryShowQueueMembers(query *tgbotapi.CallbackQuery) (callbackConfi
 	ctx := context.Background()
 	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
-		logrus.WithError(err).Error("create new firestore client failed")
+		_logger.WithError(err).Error("create new firestore client failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -202,7 +202,7 @@ func callbackQueryShowQueueMembers(query *tgbotapi.CallbackQuery) (callbackConfi
 	}
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
-		logrus.WithError(err).Error("query queue failed")
+		_logger.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -210,7 +210,7 @@ func callbackQueryShowQueueMembers(query *tgbotapi.CallbackQuery) (callbackConfi
 		}, nil
 	}
 	if queue == nil || queue.Dismissed {
-		logrus.WithError(err).Error("query queue failed")
+		_logger.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "此队列已取消",
@@ -280,7 +280,7 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 	ctx := context.Background()
 	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
-		logrus.WithError(err).Error("create firestore client failed")
+		_logger.WithError(err).Error("create firestore client failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -296,7 +296,7 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 				ShowAlert:       false,
 			}, nil
 		}
-		logrus.WithError(err).Error("query queue failed")
+		_logger.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -304,7 +304,7 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 		}, nil
 	}
 	if err = queue.Remove(ctx, client, int64(uid)); err != nil {
-		logrus.WithError(err).Error("remove queue failed")
+		_logger.WithError(err).Error("remove queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -317,7 +317,7 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 			MessageID: query.Message.MessageID},
 		Text: fmt.Sprintf("您已离开前往 %s 的队列", queue.Name)})
 	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+		_logger.WithError(err).WithFields(logrus.Fields{"uid": uid,
 			"msgID": query.Message.MessageID}).Error("edit message failed")
 	}
 	sentMsg, err := tgbot.Send(tgbotapi.MessageConfig{
@@ -325,14 +325,14 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 			ChatID: queue.OwnerID},
 		Text: fmt.Sprintf("%s 已离您的队列", username)})
 	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+		_logger.WithError(err).WithFields(logrus.Fields{"uid": uid,
 			"msgID": query.Message.MessageID}).Error("send leave message failed")
 	} else {
 		go func() {
 			time.Sleep(30 * time.Second)
 			_, err = tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(sentMsg.Chat.ID, sentMsg.MessageID))
 			if err != nil {
-				logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+				_logger.WithError(err).WithFields(logrus.Fields{"uid": uid,
 					"msgID": query.Message.MessageID}).Error("delete leave message failed")
 			}
 		}()
@@ -350,7 +350,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 	ctx := context.Background()
 	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
-		logrus.WithError(err).Error("query island failed")
+		_logger.WithError(err).Error("query island failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -371,7 +371,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		}, nil
 	}
 	if island.OnBoardQueueID != queueID {
-		logrus.WithError(err).Error("not island owner")
+		_logger.WithError(err).Error("not island owner")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "你不能操作别人的队列",
@@ -380,7 +380,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 	}
 	queue, err := island.GetOnboardQueue(ctx)
 	if err != nil {
-		logrus.WithError(err).Error("query queue failed")
+		_logger.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -389,7 +389,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 	}
 	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
-		logrus.WithError(err).Error("create firestore client failed")
+		_logger.WithError(err).Error("create firestore client failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -405,7 +405,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 				ShowAlert:       false,
 			}, nil
 		}
-		logrus.WithError(err).Error("append queue failed")
+		_logger.WithError(err).Error("append queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -429,7 +429,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		ParseMode: "MarkdownV2",
 	})
 	if err != nil {
-		logrus.WithError(err).Error("notify next failed")
+		_logger.WithError(err).Error("notify next failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -454,7 +454,7 @@ func callbackQueryShowQueueInfo(query *tgbotapi.CallbackQuery) (callbackConfig t
 	ctx := context.Background()
 	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
-		logrus.WithError(err).Error("create firestore client failed")
+		_logger.WithError(err).Error("create firestore client failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -470,7 +470,7 @@ func callbackQueryShowQueueInfo(query *tgbotapi.CallbackQuery) (callbackConfig t
 				ShowAlert:       false,
 			}, nil
 		}
-		logrus.WithError(err).Error("query queue failed")
+		_logger.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -514,7 +514,7 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 	ctx := context.Background()
 	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
-		logrus.WithError(err).Error("create firestore client failed")
+		_logger.WithError(err).Error("create firestore client failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -530,7 +530,7 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 				ShowAlert:       false,
 			}, nil
 		}
-		logrus.WithError(err).Error("query queue failed")
+		_logger.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -552,7 +552,7 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 				ShowAlert:       false,
 			}, nil
 		}
-		logrus.WithError(err).Error("append queue failed")
+		_logger.WithError(err).Error("append queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -582,7 +582,7 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		Text: fmt.Sprintf("@%s 加入了队列", username),
 	})
 	if err != nil {
-		logrus.WithError(err).Error("send msg failed")
+		_logger.WithError(err).Error("send msg failed")
 	} else {
 		go func() {
 			time.Sleep(55 * time.Second)
@@ -602,7 +602,7 @@ func callbackQueryDismissQueue(query *tgbotapi.CallbackQuery) (callbackConfig tg
 	ctx := context.Background()
 	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
-		logrus.WithError(err).Error("query island failed")
+		_logger.WithError(err).Error("query island failed")
 		return
 	}
 	if len(island.OnBoardQueueID) == 0 {
@@ -618,7 +618,7 @@ func callbackQueryDismissQueue(query *tgbotapi.CallbackQuery) (callbackConfig tg
 		}, nil
 	}
 	if island.OnBoardQueueID != queueID {
-		logrus.WithError(err).Error("not island owner")
+		_logger.WithError(err).Error("not island owner")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "你不能操作别人的队列",
@@ -627,7 +627,7 @@ func callbackQueryDismissQueue(query *tgbotapi.CallbackQuery) (callbackConfig tg
 	}
 	queue, err := island.ClearOldOnboardQueue(ctx)
 	if err != nil {
-		logrus.WithError(err).Error("ClearOldOnboardQueue failed")
+		_logger.WithError(err).Error("ClearOldOnboardQueue failed")
 		return
 	}
 	for _, replyMsg := range notifyQueueDissmised(queue) {
@@ -639,7 +639,7 @@ func callbackQueryDismissQueue(query *tgbotapi.CallbackQuery) (callbackConfig tg
 			MessageID: query.Message.MessageID},
 		Text: "队列已解散"})
 	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+		_logger.WithError(err).WithFields(logrus.Fields{"uid": uid,
 			"msgID": query.Message.MessageID}).Error("edit message failed")
 	}
 	return tgbotapi.CallbackConfig{
@@ -655,7 +655,7 @@ func callbackQueryGetPositionInQueue(query *tgbotapi.CallbackQuery) (callbackCon
 	ctx := context.Background()
 	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
-		logrus.WithError(err).Error("create firestore client failed")
+		_logger.WithError(err).Error("create firestore client failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -671,7 +671,7 @@ func callbackQueryGetPositionInQueue(query *tgbotapi.CallbackQuery) (callbackCon
 				ShowAlert:       false,
 			}, nil
 		}
-		logrus.WithError(err).Error("query queue failed")
+		_logger.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -700,7 +700,7 @@ func callbackQueryGetPositionInQueue(query *tgbotapi.CallbackQuery) (callbackCon
 		Text: fmt.Sprintf("正在队列：%s 中排队，当前位置：%d/%d", queue.Name, l+1, t),
 	})
 	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+		_logger.WithError(err).WithFields(logrus.Fields{"uid": uid,
 			"msgID": query.Message.MessageID}).Error("edit message failed")
 		return
 	}
@@ -722,7 +722,7 @@ func callbackQueryComing(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi
 	ctx := context.Background()
 	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
-		logrus.WithError(err).Error("create firestore client failed")
+		_logger.WithError(err).Error("create firestore client failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -738,7 +738,7 @@ func callbackQueryComing(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi
 				ShowAlert:       false,
 			}, nil
 		}
-		logrus.WithError(err).Error("query queue failed")
+		_logger.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -760,7 +760,7 @@ func callbackQueryComing(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi
 		ParseMode: "MarkdownV2",
 	})
 	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+		_logger.WithError(err).WithFields(logrus.Fields{"uid": uid,
 			"msgID":  query.Message.MessageID,
 			"action": action}).Error("message send failed")
 		err = nil
@@ -785,7 +785,7 @@ func callbackQueryComing(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi
 		Text: replyText,
 	})
 	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+		_logger.WithError(err).WithFields(logrus.Fields{"uid": uid,
 			"msgID":  query.Message.MessageID,
 			"action": action}).Error("message send failed")
 		return
@@ -817,7 +817,7 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 	ctx := context.Background()
 	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
-		logrus.WithError(err).Error("create firestore client failed")
+		_logger.WithError(err).Error("create firestore client failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -833,7 +833,7 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 				ShowAlert:       false,
 			}, nil
 		}
-		logrus.WithError(err).Error("query queue failed")
+		_logger.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -849,7 +849,7 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 		Text: "感谢本次使用",
 	})
 	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+		_logger.WithError(err).WithFields(logrus.Fields{"uid": uid,
 			"msgID":  query.Message.MessageID,
 			"action": action}).Error("message send failed")
 		err = nil
@@ -874,7 +874,7 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 		Text: replyText,
 	})
 	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{"uid": uid,
+		_logger.WithError(err).WithFields(logrus.Fields{"uid": uid,
 			"msgID":  query.Message.MessageID,
 			"action": action}).Error("message send failed")
 		return
@@ -899,7 +899,7 @@ func callbackQueryManageFriendCodes(query *tgbotapi.CallbackQuery) (callbackConf
 			return
 		}
 		if err != nil && status.Code(err) == codes.NotFound {
-			logrus.Debug("没有找到用户记录")
+			_logger.Debug("没有找到用户记录")
 			tgbot.Send(&tgbotapi.MessageConfig{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              int64(uid),
@@ -925,7 +925,7 @@ func callbackQueryManageFriendCodes(query *tgbotapi.CallbackQuery) (callbackConf
 	} else if strings.HasPrefix(query.Data, "/manageFriendCodes_") {
 		args := strings.Split(query.Data[19:], "_")
 		if len(args) != 2 {
-			logrus.WithError(err).Error("manage fc wrong parameters")
+			_logger.WithError(err).Error("manage fc wrong parameters")
 			return tgbotapi.CallbackConfig{
 				CallbackQueryID: query.ID,
 				Text:            "wrong parameters",
@@ -935,7 +935,7 @@ func callbackQueryManageFriendCodes(query *tgbotapi.CallbackQuery) (callbackConf
 		var uid int
 		uid, err = strconv.Atoi(args[0])
 		if err != nil {
-			logrus.WithError(err).Error("wrond uid")
+			_logger.WithError(err).Error("wrond uid")
 			return tgbotapi.CallbackConfig{
 				CallbackQueryID: query.ID,
 				Text:            "wrong uid",
@@ -943,7 +943,7 @@ func callbackQueryManageFriendCodes(query *tgbotapi.CallbackQuery) (callbackConf
 			}, nil
 		}
 		if uid != query.From.ID {
-			logrus.WithError(err).Error("wrond owner")
+			_logger.WithError(err).Error("wrond owner")
 			return tgbotapi.CallbackConfig{
 				CallbackQueryID: query.ID,
 				Text:            "not your friend code",
@@ -953,7 +953,7 @@ func callbackQueryManageFriendCodes(query *tgbotapi.CallbackQuery) (callbackConf
 		var idx int
 		idx, err = strconv.Atoi(args[1])
 		if err != nil {
-			logrus.WithError(err).Error("wrond idx")
+			_logger.WithError(err).Error("wrond idx")
 			return tgbotapi.CallbackConfig{
 				CallbackQueryID: query.ID,
 				Text:            "wrong index",
@@ -964,11 +964,11 @@ func callbackQueryManageFriendCodes(query *tgbotapi.CallbackQuery) (callbackConf
 		var u *storage.User
 		u, err = storage.GetUser(ctx, uid, 0)
 		if err != nil && status.Code(err) != codes.NotFound {
-			logrus.WithError(err).Error("query users Freind Code")
+			_logger.WithError(err).Error("query users Freind Code")
 			return
 		}
 		if err != nil && status.Code(err) == codes.NotFound {
-			logrus.WithError(err).Error("Freind Code not found")
+			_logger.WithError(err).Error("Freind Code not found")
 			return
 		}
 		var delFCBtn = tgbotapi.NewInlineKeyboardButtonData("删 FriendCode", fmt.Sprintf("/delFC_%d_%d", uid, idx))
@@ -993,7 +993,7 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 	// /delFC_%uid_%idx
 	args := strings.Split(query.Data[7:], "_")
 	if len(args) != 2 {
-		logrus.WithError(err).Error("manage fc wrong parameters")
+		_logger.WithError(err).Error("manage fc wrong parameters")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "wrong parameters",
@@ -1003,7 +1003,7 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 	var uid int
 	uid, err = strconv.Atoi(args[0])
 	if err != nil {
-		logrus.WithError(err).Error("wrond uid")
+		_logger.WithError(err).Error("wrond uid")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "wrong uid",
@@ -1011,7 +1011,7 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 		}, nil
 	}
 	if uid != query.From.ID {
-		logrus.WithError(err).Error("wrond owner")
+		_logger.WithError(err).Error("wrond owner")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "not your friend code",
@@ -1021,7 +1021,7 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 	var idx int
 	idx, err = strconv.Atoi(args[1])
 	if err != nil {
-		logrus.WithError(err).Error("wrond idx")
+		_logger.WithError(err).Error("wrond idx")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "wrong index",
@@ -1032,11 +1032,11 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 	var u *storage.User
 	u, err = storage.GetUser(ctx, uid, 0)
 	if err != nil && status.Code(err) != codes.NotFound {
-		logrus.WithError(err).Error("query users Freind Code")
+		_logger.WithError(err).Error("query users Freind Code")
 		return
 	}
 	if err != nil && status.Code(err) == codes.NotFound {
-		logrus.WithError(err).Error("Freind Code not found")
+		_logger.WithError(err).Error("Freind Code not found")
 		return
 	}
 	u, err = storage.GetUser(ctx, uid, 0)
@@ -1050,7 +1050,7 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 		return
 	}
 	if err != nil && status.Code(err) == codes.NotFound {
-		logrus.Debug("没有找到用户记录")
+		_logger.Debug("没有找到用户记录")
 		tgbot.Send(&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              int64(uid),
@@ -1060,7 +1060,7 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 		return
 	}
 	if len(u.NSAccounts) == 0 {
-		logrus.Debug("没有找到用户记录")
+		_logger.Debug("没有找到用户记录")
 		tgbot.Send(&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              int64(uid),
@@ -1071,7 +1071,7 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 	}
 	err = u.DeleteNSAccountByIndex(ctx, idx)
 	if err != nil {
-		logrus.WithError(err).Error("DeleteNSAccountByIndex idx")
+		_logger.WithError(err).Error("DeleteNSAccountByIndex idx")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",

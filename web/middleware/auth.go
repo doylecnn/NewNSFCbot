@@ -14,8 +14,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var _logger *logrus.Logger
+
 //TelegramAuth 使用telegram 来登录
-func TelegramAuth(secretKey [32]byte) gin.HandlerFunc {
+func TelegramAuth(secretKey [32]byte, logger *logrus.Logger) gin.HandlerFunc {
+	_logger = logger
 	return func(c *gin.Context) {
 		authData, err := c.Cookie("auth_data_str")
 		if err != nil || len(authData) == 0 {
@@ -96,7 +99,7 @@ func TelegramAdminAuth(secretKey [32]byte, adminUID int) gin.HandlerFunc {
 				return
 			}
 		}
-		logrus.WithError(err).Error("auth failed")
+		_logger.WithError(err).Error("auth failed")
 		redirectToLogin(c, "auth failed")
 		return
 	}
@@ -107,7 +110,7 @@ func redirectToLogin(c *gin.Context, errorMessage string) {
 	DelCookie(c, "auth_data_hash")
 	DelCookie(c, "admin_authed")
 	DelCookie(c, "authed")
-	logrus.Printf("errormessage:%s", errorMessage)
+	_logger.Printf("errormessage:%s", errorMessage)
 	c.Redirect(http.StatusTemporaryRedirect, "/login?error=LoginFailed")
 	c.Abort()
 }

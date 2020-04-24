@@ -8,26 +8,25 @@ import (
 
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-	"github.com/sirupsen/logrus"
 )
 
 // HandleInlineQuery handle all inline query
 func (c ChatBot) HandleInlineQuery(inlineQuery *tgbotapi.InlineQuery) {
 	if inlineQuery.Query == "myfc" {
 		if result, err := inlineQueryMyFC(inlineQuery); err != nil {
-			logrus.Warn(err)
+			_logger.Warn(err)
 		} else {
 			c.TgBotClient.AnswerInlineQuery(*result)
 		}
 	} else if inlineQuery.Query == "myisland" {
 		if result, err := inlineQueryMyIsland(inlineQuery); err != nil {
-			logrus.Warn(err)
+			_logger.Warn(err)
 		} else {
 			c.TgBotClient.AnswerInlineQuery(*result)
 		}
 	} else if strings.HasPrefix(inlineQuery.Query, "/share_") {
 		if result, err := inlineQueryShareQueue(inlineQuery); err != nil {
-			logrus.Warn(err)
+			_logger.Warn(err)
 		} else {
 			c.TgBotClient.AnswerInlineQuery(*result)
 		}

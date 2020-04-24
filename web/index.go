@@ -5,7 +5,6 @@ import (
 
 	"github.com/doylecnn/new-nsfc-bot/web/middleware"
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 )
 
 // Index show index page. use templates/index.html
@@ -15,7 +14,7 @@ func (w Web) Index(c *gin.Context) {
 			authData, _ := c.Cookie("auth_data_str")
 			userID, err := middleware.GetAuthDataInfo(authData, "id")
 			if err != nil {
-				logrus.Print(err)
+				_logger.Print(err)
 				c.HTML(http.StatusOK, "index.html", nil)
 				return
 			}

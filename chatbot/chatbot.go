@@ -25,6 +25,7 @@ var (
 	_domain      string
 	cacheForEdit *lru.Cache
 	sentMsgs     []sentMessage
+	_logger      *logrus.Logger
 )
 
 type sentMessage struct {
@@ -35,6 +36,7 @@ type sentMessage struct {
 
 // ChatBot is chat bot
 type ChatBot struct {
+	Logger      *logrus.Logger
 	TgBotClient *tgbotapi.BotAPI
 	Route       Router
 	ProjectID   string
@@ -43,10 +45,11 @@ type ChatBot struct {
 }
 
 // NewChatBot return new chat bot
-func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatBot {
+func NewChatBot(token, domain, appID, projectID, port string, adminID int, logger *logrus.Logger) ChatBot {
+	_logger = logger
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
-		logrus.Fatalln(err)
+		_logger.Fatalln(err)
 	}
 
 	tgbot = bot
@@ -83,20 +86,20 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 			})
 	}
 	if cmds, err := getMyCommands(); err != nil {
-		logrus.WithError(err).Error("getMyCommands")
+		_logger.WithError(err).Error("getMyCommands")
 	} else if err == nil && len(cmds) != len(botCommands) {
 		if resp, err := setMyCommands(botCommands); err != nil {
-			logrus.WithError(err).Warn("setMyCommands")
+			_logger.WithError(err).Warn("setMyCommands")
 		} else {
-			logrus.WithFields(logrus.Fields{"result": resp.Result}).Info("setMyCommands")
+			_logger.WithFields(logrus.Fields{"result": resp.Result}).Info("setMyCommands")
 		}
 	} else if err == nil && len(cmds) == len(botCommands) {
 		for i := 0; i < len(cmds); i++ {
 			if cmds[i].Command != botCommands[i].Command || cmds[i].Description != botCommands[i].Description {
 				if resp, err := setMyCommands(botCommands); err != nil {
-					logrus.WithError(err).Warn("setMyCommands")
+					_logger.WithError(err).Warn("setMyCommands")
 				} else {
-					logrus.WithFields(logrus.Fields{"result": resp.Result}).Info("setMyCommands")
+					_logger.WithFields(logrus.Fields{"result": resp.Result}).Info("setMyCommands")
 				}
 				break
 			}
@@ -107,7 +110,7 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 	botAdminID = adminID
 	_projectID = projectID
 	_domain = domain
-	c := ChatBot{TgBotClient: bot, Route: router, ProjectID: projectID, appID: appID, token: token}
+	c := ChatBot{TgBotClient: bot, Route: router, ProjectID: projectID, appID: appID, token: token, Logger: logger}
 
 	router.HandleFunc("help", func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 		return []*tgbotapi.MessageConfig{{
@@ -163,14 +166,14 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 	router.HandleFunc("debug", cmdToggleDebugMode)
 	router.HandleFunc("clear", c.cmdClearMessages)
 
-	logrus.WithFields(logrus.Fields{"bot username": bot.Self.UserName,
+	_logger.WithFields(logrus.Fields{"bot username": bot.Self.UserName,
 		"bot id": bot.Self.ID}).Infof("Authorized on account %s, ID: %d", bot.Self.UserName, bot.Self.ID)
 
 	if err = c.SetWebhook(); err != nil {
-		logrus.Error(err)
+		_logger.WithError(err).Error("SetWebhook failed")
 	}
 	if cacheForEdit, err = lru.New(17); err != nil {
-		logrus.WithError(err).Error("new lru cache failed")
+		_logger.WithError(err).Error("new lru cache failed")
 	}
 
 	return c
@@ -183,7 +186,7 @@ func (c ChatBot) SetWebhook() (err error) {
 		return
 	}
 	if info.LastErrorDate != 0 {
-		logrus.WithField("last error message", info.LastErrorMessage).Info("Telegram callback failed")
+		c.Logger.WithField("last error message", info.LastErrorMessage).Info("Telegram callback failed")
 	}
 	if !info.IsSet() {
 		var webhookConfig WebhookConfig
@@ -194,7 +197,7 @@ func (c ChatBot) SetWebhook() (err error) {
 		var apiResp tgbotapi.APIResponse
 		apiResp, err = c.setWebhook(webhookConfig)
 		if err != nil {
-			logrus.WithError(err).Error("SetWebhook failed")
+			c.Logger.WithError(err).Error("SetWebhook failed")
 			return
 		}
 		fields := logrus.Fields{
@@ -207,7 +210,7 @@ func (c ChatBot) SetWebhook() (err error) {
 			fields["MigrateToChatID"] = apiResp.Parameters.MigrateToChatID
 			fields["RetryAfter"] = apiResp.Parameters.RetryAfter
 		}
-		logrus.WithFields(fields).Info("set webhook success")
+		c.Logger.WithFields(fields).Info("set webhook success")
 	}
 	return
 }
@@ -238,12 +241,12 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 		} else if message != nil && message.Chat.IsPrivate() && !message.IsCommand() && message.ReplyToMessage != nil && message.ReplyToMessage.Text == "请输入新的密码" && message.ReplyToMessage.From.IsBot {
 			replies, e := cmdUpdatePassword(message)
 			if e != nil {
-				logrus.WithError(e).Error("cmdUpdatePassword")
+				c.Logger.WithError(e).Error("cmdUpdatePassword")
 			}
 			for _, reply := range replies {
 				_, e := c.TgBotClient.Send(reply)
 				if e != nil {
-					logrus.WithError(e).Error("cmdUpdatePassword send message")
+					c.Logger.WithError(e).Error("cmdUpdatePassword send message")
 				}
 			}
 		} else if message != nil && message.IsCommand() {
@@ -262,18 +265,18 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 						}
 					}
 					if foundOutDateMsg {
-						logrus.WithField("sentMsgs len:", len(sentMsgs))
+						c.Logger.WithField("sentMsgs len:", len(sentMsgs))
 						for _, sentMsg := range sentMsgs[i:] {
 							c.TgBotClient.DeleteMessage(tgbotapi.NewDeleteMessage(sentMsg.ChatID, sentMsg.MsgID))
 						}
 						copy(sentMsgs, sentMsgs[i:])
 						sentMsgs = sentMsgs[:len(sentMsgs)-i]
-						logrus.WithField("sentMsgs len:", len(sentMsgs))
+						c.Logger.WithField("sentMsgs len:", len(sentMsgs))
 					}
 				}
 				messageSendTime := message.Time()
 				if !isEditedMessage && time.Since(messageSendTime).Seconds() > 60 {
-					logrus.WithFields(logrus.Fields{
+					c.Logger.WithFields(logrus.Fields{
 						"command":          message.Command(),
 						"args":             message.CommandArguments(),
 						"receive datetime": message.Time().Format("2016-01-02 15:04:05 -0700"),
@@ -286,7 +289,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				}
 				if isEditedMessage {
 					if time.Since(messageSendTime).Minutes() > 2 {
-						logrus.WithFields(logrus.Fields{
+						c.Logger.WithFields(logrus.Fields{
 							"command":          message.Command(),
 							"args":             message.CommandArguments(),
 							"receive datetime": message.Time().Format("2016-01-02 15:04:05 -0700"),
@@ -298,7 +301,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 					}
 					var editTime = time.Unix(int64(message.EditDate), 0)
 					if time.Since(editTime).Seconds() > 60 {
-						logrus.WithFields(logrus.Fields{
+						c.Logger.WithFields(logrus.Fields{
 							"command":          message.Command(),
 							"args":             message.CommandArguments(),
 							"receive datetime": message.Time().Format("2016-01-02 15:04:05 -0700"),
@@ -313,7 +316,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				var canEditSentMsg = false
 				var canEditSentMsgID int
 				if isEditedMessage {
-					logrus.WithField("editedmessage", message.Text).Info("editedmessage received")
+					c.Logger.WithField("editedmessage", message.Text).Info("editedmessage received")
 					if cacheForEdit != nil {
 						if v, ok := cacheForEdit.Get(key); ok {
 							if ids, ok := v.([]int); ok {
@@ -335,7 +338,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				var sentMessageIDs []int
 				if err != nil {
 					if status.Code(err.InnerError) != codes.NotFound {
-						logrus.Warnf("%s", err.InnerError)
+						c.Logger.Warnf("%s", err.InnerError)
 					}
 					if len(err.ReplyText) > 0 {
 						replyMessage := tgbotapi.MessageConfig{
@@ -345,7 +348,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 							Text: err.ReplyText}
 						sentM, err := c.TgBotClient.Send(replyMessage)
 						if err != nil {
-							logrus.WithError(err).WithField("message", replyMessage.Text).Error("send message failed")
+							c.Logger.WithError(err).WithField("message", replyMessage.Text).Error("send message failed")
 						} else {
 							if cacheForEdit != nil {
 								sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
@@ -366,7 +369,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 								Text: replyMessages[0].Text}
 							_, err := c.TgBotClient.Send(fm)
 							if err != nil {
-								logrus.WithError(err).WithField("message", fm.Text).Error("send message failed")
+								c.Logger.WithError(err).WithField("message", fm.Text).Error("send message failed")
 							}
 						}
 					} else {
@@ -388,7 +391,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 											Text: replyMessage.Text[offset : offset+remain]}
 										sentM, err := c.TgBotClient.Send(fm)
 										if err != nil {
-											logrus.WithError(err).WithField("message", fm.Text).Error("send message failed")
+											c.Logger.WithError(err).WithField("message", fm.Text).Error("send message failed")
 										} else if replyMessage.ChatID == message.Chat.ID && !message.Chat.IsPrivate() {
 											if cacheForEdit != nil {
 												sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
@@ -401,7 +404,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 								} else {
 									sentM, err := c.TgBotClient.Send(*replyMessage)
 									if err != nil {
-										logrus.WithError(err).WithField("message", replyMessage.Text).Error("send message failed")
+										c.Logger.WithError(err).WithField("message", replyMessage.Text).Error("send message failed")
 									} else if replyMessage.ChatID == message.Chat.ID && !message.Chat.IsPrivate() {
 										if cacheForEdit != nil {
 											sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
@@ -422,7 +425,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				if message.Chat.IsPrivate() {
 					continue
 				}
-				logrus.WithFields(logrus.Fields{
+				c.Logger.WithFields(logrus.Fields{
 					"uid":   message.LeftChatMember.ID,
 					"name":  message.LeftChatMember.FirstName + " " + message.LeftChatMember.LastName + "(" + message.LeftChatMember.UserName + ")",
 					"gid":   message.Chat.ID,
@@ -434,7 +437,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				var groupID int64 = message.Chat.ID
 				ctx := context.Background()
 				if err := storage.RemoveGroupIDFromUserGroupIDs(ctx, message.From.ID, groupID); err != nil {
-					logrus.WithError(err).Error("remove groupid from user's groupids failed")
+					c.Logger.WithError(err).Error("remove groupid from user's groupids failed")
 				}
 			} else if message != nil && message.NewChatMembers != nil && len(*message.NewChatMembers) > 0 {
 				if message.Chat.IsPrivate() {
@@ -447,7 +450,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 					if status.Code(err) == codes.NotFound {
 						g.Set(ctx)
 					} else {
-						logrus.WithError(err).Error("get group failed")
+						c.Logger.WithError(err).Error("get group failed")
 					}
 				} else {
 					if og.Title != g.Title || og.Type != g.Type {
@@ -455,7 +458,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 					}
 				}
 				for _, u := range *message.NewChatMembers {
-					logrus.WithFields(logrus.Fields{
+					c.Logger.WithFields(logrus.Fields{
 						"uid":   u.ID,
 						"name":  u.FirstName + " " + u.LastName + "(" + u.UserName + ")",
 						"gid":   message.Chat.ID,
@@ -463,7 +466,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 					}).Info("user joined group")
 					u, err := storage.GetUser(ctx, u.ID, g.ID)
 					if err != nil {
-						logrus.WithError(err).Error("get user failed")
+						c.Logger.WithError(err).Error("get user failed")
 					} else {
 						if len(u.GroupIDs) > 0 {
 							u.GroupIDs = append(u.GroupIDs, g.ID)
@@ -471,7 +474,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 							u.GroupIDs = []int64{g.ID}
 						}
 						if err = storage.AddGroupIDToUserGroupIDs(ctx, u.ID, g.ID); err != nil {
-							logrus.WithError(err).Error("add groupid to user's groupids faild")
+							c.Logger.WithError(err).Error("add groupid to user's groupids faild")
 						}
 					}
 				}
@@ -528,16 +531,16 @@ func (c ChatBot) deleteWebhook() (tgbotapi.APIResponse, error) {
 func (c ChatBot) RestartBot() {
 	info, err := c.TgBotClient.GetWebhookInfo()
 	if err != nil {
-		logrus.WithError(err).Error("GetWebhookInfo")
+		c.Logger.WithError(err).Error("GetWebhookInfo")
 		return
 	}
 	if info.LastErrorDate != 0 {
-		logrus.WithField("last error message", info.LastErrorMessage).Info("Telegram callback failed")
+		c.Logger.WithField("last error message", info.LastErrorMessage).Info("Telegram callback failed")
 	}
 	if info.IsSet() {
 		var resp tgbotapi.APIResponse
 		if resp, err = c.deleteWebhook(); err != nil {
-			logrus.WithError(err).Error(c.deleteWebhook)
+			c.Logger.WithError(err).Error("deleteWebhook failed")
 		} else {
 			fields := logrus.Fields{
 				"desc":      resp.Description,
@@ -549,7 +552,7 @@ func (c ChatBot) RestartBot() {
 				fields["MigrateToChatID"] = resp.Parameters.MigrateToChatID
 				fields["RetryAfter"] = resp.Parameters.RetryAfter
 			}
-			logrus.WithFields(fields).Info("delete webhook success")
+			c.Logger.WithFields(fields).Info("delete webhook success")
 		}
 	}
 	c.SetWebhook()

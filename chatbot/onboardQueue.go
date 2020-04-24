@@ -8,7 +8,6 @@ import (
 
 	"cloud.google.com/go/firestore"
 	"github.com/doylecnn/new-nsfc-bot/storage"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -57,7 +56,7 @@ func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 				ReplyText: "您还没有登记您的岛屿，请用/addisland 添加您的岛屿信息",
 			}
 		}
-		logrus.WithError(err).Error("cmdMyQueue GetAnimalCrossingIslandByUserID")
+		_logger.WithError(err).Error("cmdMyQueue GetAnimalCrossingIslandByUserID")
 		return nil, Error{InnerError: err,
 			ReplyText: "查询岛屿时出错了。",
 		}
@@ -80,7 +79,7 @@ func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 				Text: "您没有开启队列",
 			}}, nil
 		}
-		logrus.WithError(err).Error("cmdMyQueue GetOnboardQueue")
+		_logger.WithError(err).Error("cmdMyQueue GetOnboardQueue")
 		return nil, Error{InnerError: err,
 			ReplyText: "查询队列时出错了",
 		}
@@ -88,7 +87,7 @@ func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 	if queue.Dismissed {
 		client, err := firestore.NewClient(ctx, _projectID)
 		if err != nil {
-			logrus.WithError(err).Error("cmdMyQueue newClient")
+			_logger.WithError(err).Error("cmdMyQueue newClient")
 			return nil, Error{InnerError: err,
 				ReplyText: "查询队列时出错了",
 			}
@@ -155,7 +154,7 @@ func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 				ReplyText: "您还没有登记您的岛屿，请用/addisland 添加您的岛屿信息",
 			}
 		}
-		logrus.WithError(err).Error("cmdMyQueue GetAnimalCrossingIslandByUserID")
+		_logger.WithError(err).Error("cmdMyQueue GetAnimalCrossingIslandByUserID")
 		return nil, Error{InnerError: err,
 			ReplyText: "查询岛屿时出错了。",
 		}
@@ -178,14 +177,14 @@ func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 				Text: "您没有开启队列",
 			}}, nil
 		}
-		logrus.WithError(err).Error("cmdMyQueue GetOnboardQueue")
+		_logger.WithError(err).Error("cmdMyQueue GetOnboardQueue")
 		return nil, Error{InnerError: err,
 			ReplyText: "查询队列时出错了",
 		}
 	}
 	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
-		logrus.WithError(err).Error("cmdMyQueue newClient")
+		_logger.WithError(err).Error("cmdMyQueue newClient")
 		return nil, Error{InnerError: err,
 			ReplyText: "查询队列时出错了",
 		}
@@ -238,13 +237,13 @@ func cmdJoinedQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	uid := int64(message.From.ID)
 	queues, err := storage.GetJoinedQueue(ctx, uid)
 	if err != nil {
-		logrus.WithError(err).Error("cmdMyQueue newClient")
+		_logger.WithError(err).Error("cmdMyQueue newClient")
 		return nil, Error{InnerError: err,
 			ReplyText: "查询队列时出错了",
 		}
 	}
 	if queues == nil || len(queues) == 0 {
-		logrus.WithError(err).Error("cmdMyQueue newClient")
+		_logger.WithError(err).Error("cmdMyQueue newClient")
 		return nil, Error{InnerError: err,
 			ReplyText: "您没有加入任何队列",
 		}
@@ -347,7 +346,7 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 	}
 	queue, err := island.CreateOnboardQueue(ctx, int64(message.From.ID), owner, password, specialInfo, maxGuestCount)
 	if err != nil {
-		logrus.WithError(err).Error("创建队列时出错")
+		_logger.WithError(err).Error("创建队列时出错")
 		return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,

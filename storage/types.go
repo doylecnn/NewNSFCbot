@@ -16,6 +16,8 @@ import (
 var (
 	// ProjectID gae project id
 	ProjectID string
+	// Logger logger
+	Logger *logrus.Logger
 )
 
 // User Telegram User
@@ -39,7 +41,7 @@ func (u User) Set(ctx context.Context) (err error) {
 
 	_, err = client.Collection("users").Doc(fmt.Sprintf("%d", u.ID)).Set(ctx, u)
 	if err != nil {
-		logrus.Warnf("Failed adding user: %v", err)
+		Logger.Warnf("Failed adding user: %v", err)
 	}
 	return
 }
@@ -54,7 +56,7 @@ func (u User) Update(ctx context.Context) (err error) {
 
 	_, err = client.Doc(u.Path).Set(ctx, u)
 	if err != nil {
-		logrus.Warnf("Failed update user: %v", err)
+		Logger.Warnf("Failed update user: %v", err)
 	}
 	return
 }
@@ -73,14 +75,14 @@ func (u User) Delete(ctx context.Context) (err error) {
 		if games != nil {
 			priceHistory := games.Doc("animal_crossing").Collection("price_history")
 			if err = DeleteCollection(ctx, client, priceHistory, 10); err != nil {
-				logrus.Warnf("Failed delete collection price_history: %v", err)
+				Logger.Warnf("Failed delete collection price_history: %v", err)
 			}
 			if err = DeleteCollection(ctx, client, games, 10); err != nil {
-				logrus.Warnf("Failed delete collection games: %v", err)
+				Logger.Warnf("Failed delete collection games: %v", err)
 			}
 		}
 		if _, err = docRef.Delete(ctx); err != nil {
-			logrus.Warnf("Failed delete doc user: %v", err)
+			Logger.Warnf("Failed delete doc user: %v", err)
 		}
 	}
 	return
@@ -150,7 +152,7 @@ func GetUser(ctx context.Context, userID int, groupID int64) (user *User, err er
 	dsnap, err := client.Doc(fmt.Sprintf("users/%d", userID)).Get(ctx)
 	if err != nil {
 		if err != nil && status.Code(err) != codes.NotFound {
-			logrus.Warnf("Failed when get user: %v", err)
+			Logger.Warnf("Failed when get user: %v", err)
 		}
 		return nil, err
 	}
@@ -189,7 +191,7 @@ func GetAllUsers(ctx context.Context) (users []*User, err error) {
 		}
 		u := &User{}
 		if err = doc.DataTo(u); err != nil {
-			logrus.Warn(err)
+			Logger.Warn(err)
 			return nil, err
 		}
 		if u != nil {
@@ -220,7 +222,7 @@ func GetUsersByName(ctx context.Context, username string, groupID int64) (users 
 		}
 		u := &User{}
 		if err = doc.DataTo(u); err != nil {
-			logrus.WithError(err).Warn("GetUsersByName")
+			Logger.WithError(err).Warn("GetUsersByName")
 			continue
 		}
 		if u != nil {
@@ -252,7 +254,7 @@ func GetUsersByNSAccountName(ctx context.Context, username string, groupID int64
 		if userDocSnap.Exists() {
 			u := &User{}
 			if err = userDocSnap.DataTo(u); err != nil {
-				logrus.WithError(err).Warn("GetUsersByNSAccountName")
+				Logger.WithError(err).Warn("GetUsersByNSAccountName")
 				continue
 			}
 			if u != nil {
@@ -307,7 +309,7 @@ func (u *User) GetAnimalCrossingIsland(ctx context.Context) (island *Island, err
 	island, err = GetAnimalCrossingIslandByUserID(ctx, u.ID)
 	if err != nil {
 		if status.Code(err) != codes.NotFound {
-			logrus.Warnf("failed when get island: %v", err)
+			Logger.Warnf("failed when get island: %v", err)
 		}
 		return nil, err
 	}
@@ -330,7 +332,7 @@ func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupI
 		}
 		if err != nil {
 			if status.Code(err) == codes.NotFound {
-				logrus.Debug("not found user in group")
+				Logger.Debug("not found user in group")
 			}
 			return nil, err
 		}
@@ -340,7 +342,7 @@ func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupI
 		if islandDoc, err := doc.Ref.Collection("games").Doc("animal_crossing").Get(ctx); err == nil && islandDoc.Exists() {
 			var island Island
 			if err = islandDoc.DataTo(&island); err != nil {
-				logrus.WithError(err).Error("error when DataTo island")
+				Logger.WithError(err).Error("error when DataTo island")
 				continue
 			}
 
@@ -355,7 +357,7 @@ func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupI
 			if island.NameInsensitive == name || island.NameInsensitive == name+"岛" {
 				u := &User{}
 				if err = doc.DataTo(u); err != nil {
-					logrus.WithError(err).Error("error when DataTo user")
+					Logger.WithError(err).Error("error when DataTo user")
 					continue
 				}
 				if u != nil {
@@ -387,7 +389,7 @@ func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string, g
 		}
 		if err != nil {
 			if status.Code(err) == codes.NotFound {
-				logrus.Debug("not found user in group")
+				Logger.Debug("not found user in group")
 			}
 			return nil, err
 		}
@@ -397,13 +399,13 @@ func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string, g
 		if islandDoc, err := doc.Ref.Collection("games").Doc("animal_crossing").Get(ctx); err == nil && islandDoc.Exists() {
 			var island Island
 			if err = islandDoc.DataTo(&island); err != nil {
-				logrus.WithError(err).Error("error when DataTo island")
+				Logger.WithError(err).Error("error when DataTo island")
 				continue
 			}
 			if island.OwnerInsensitive == strings.ToLower(name) {
 				u := &User{}
 				if err = doc.DataTo(u); err != nil {
-					logrus.WithError(err).Error("error when DataTo user")
+					Logger.WithError(err).Error("error when DataTo user")
 					continue
 				}
 				if u != nil {
@@ -435,7 +437,7 @@ func GetUsersByAnimalCrossingIslandInfo(ctx context.Context, info string, groupI
 		}
 		if err != nil {
 			if status.Code(err) == codes.NotFound {
-				logrus.Debug("not found user in group")
+				Logger.Debug("not found user in group")
 			}
 			return nil, err
 		}
@@ -445,7 +447,7 @@ func GetUsersByAnimalCrossingIslandInfo(ctx context.Context, info string, groupI
 		if islandDoc, err := doc.Ref.Collection("games").Doc("animal_crossing").Get(ctx); err == nil && islandDoc.Exists() {
 			var island Island
 			if err = islandDoc.DataTo(&island); err != nil {
-				logrus.WithError(err).Error("error when DataTo island")
+				Logger.WithError(err).Error("error when DataTo island")
 				continue
 			}
 			if len(island.BaseInfo) == 0 && len(island.Fruits) > 0 {
@@ -456,7 +458,7 @@ func GetUsersByAnimalCrossingIslandInfo(ctx context.Context, info string, groupI
 				len(island.BaseInfo) > 0 && fuzzy.PartialRatio(island.BaseInfo, info) > 80 {
 				u := &User{}
 				if err = doc.DataTo(u); err != nil {
-					logrus.WithError(err).Error("error when DataTo user")
+					Logger.WithError(err).Error("error when DataTo user")
 					continue
 				}
 				if u != nil {
@@ -584,7 +586,7 @@ func GetAllGroups(ctx context.Context) (groups []*Group, err error) {
 		}
 		g := &Group{}
 		if err = doc.DataTo(g); err != nil {
-			logrus.Warn(err)
+			Logger.Warn(err)
 			return nil, err
 		}
 		if g != nil {
@@ -605,7 +607,7 @@ func (g Group) Set(ctx context.Context) (err error) {
 	groupID := fmt.Sprintf("%d", g.ID)
 	_, err = client.Collection("groups").Doc(groupID).Set(ctx, g)
 	if err != nil {
-		logrus.Warnf("Failed adding group info: %v", err)
+		Logger.Warnf("Failed adding group info: %v", err)
 	}
 	return
 }
@@ -620,7 +622,7 @@ func (g Group) Update(ctx context.Context) (err error) {
 
 	_, err = client.Doc(fmt.Sprintf("groups/%d", g.ID)).Set(ctx, g)
 	if err != nil {
-		logrus.Warnf("Failed update group info: %v", err)
+		Logger.Warnf("Failed update group info: %v", err)
 	}
 	return
 }
@@ -636,7 +638,7 @@ func GetGroup(ctx context.Context, groupID int64) (group Group, err error) {
 	dsnap, err := client.Doc(fmt.Sprintf("groups/%d", groupID)).Get(ctx)
 	if err != nil && status.Code(err) != codes.NotFound {
 		if status.Code(err) != codes.NotFound {
-			logrus.Warnf("Failed when get group: %v", err)
+			Logger.Warnf("Failed when get group: %v", err)
 		}
 		return
 	}

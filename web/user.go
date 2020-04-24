@@ -8,7 +8,6 @@ import (
 
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	"github.com/doylecnn/new-nsfc-bot/web/middleware"
-	"github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,7 +19,7 @@ func (w Web) User(c *gin.Context) {
 			authData, _ := c.Cookie("auth_data_str")
 			userID, err := middleware.GetAuthDataInfo(authData, "id")
 			if err != nil {
-				logrus.Print(err)
+				_logger.Print(err)
 			}
 			userid := c.Param("userid")
 			if userID == userid {
@@ -51,7 +50,7 @@ func (w Web) User(c *gin.Context) {
 					})
 				}
 			} else {
-				logrus.Printf("userid: [%s] != userid: [%s]", userID, userid)
+				_logger.Printf("userid: [%s] != userid: [%s]", userID, userid)
 				c.AbortWithStatus(http.StatusForbidden)
 			}
 			return

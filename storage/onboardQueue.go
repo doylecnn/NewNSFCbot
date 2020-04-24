@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"cloud.google.com/go/firestore"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/api/iterator"
 )
 
@@ -46,7 +45,7 @@ func GetJoinedQueue(ctx context.Context, uid int64) (queue []*OnboardQueue, err 
 		}
 		q := &OnboardQueue{}
 		if err = doc.DataTo(q); err != nil {
-			logrus.WithError(err).Warn("GetJoinedQueue")
+			Logger.WithError(err).Warn("GetJoinedQueue")
 			continue
 		}
 		if q != nil {

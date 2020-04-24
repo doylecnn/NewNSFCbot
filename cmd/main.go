@@ -2,10 +2,12 @@ package main
 
 import (
 	"errors"
+	"io/ioutil"
 	"os"
 	"strconv"
 
 	"github.com/doylecnn/new-nsfc-bot/chatbot"
+	"github.com/doylecnn/new-nsfc-bot/stackdriverhook"
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	"github.com/doylecnn/new-nsfc-bot/web"
 	"github.com/sirupsen/logrus"
@@ -21,11 +23,21 @@ type env struct {
 }
 
 func main() {
-	logrus.SetLevel(logrus.DebugLevel)
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
 	env := readEnv()
 	storage.ProjectID = env.projectID
-	bot := chatbot.NewChatBot(env.BotToken, env.Domain, env.AppID, env.projectID, env.Port, env.BotAdminID)
-	web, updates := web.NewWeb(env.BotToken, env.Domain, env.AppID, env.projectID, env.Port, env.BotAdminID, bot)
+	if h, err := stackdriverhook.NewStackDriverHook(env.projectID, "nsfcbot"); err != nil {
+		logger.WithError(err).Error("new hook failed")
+	} else {
+		defer h.Close()
+		logger.Hooks.Add(h)
+		logger.Out = ioutil.Discard
+	}
+	logger.SetLevel(logrus.DebugLevel)
+	storage.Logger = logger
+	bot := chatbot.NewChatBot(env.BotToken, env.Domain, env.AppID, env.projectID, env.Port, env.BotAdminID, logger)
+	web, updates := web.NewWeb(env.BotToken, env.Domain, env.AppID, env.projectID, env.Port, env.BotAdminID, bot, logger)
 
 	go bot.MessageHandler(updates)
 	web.Run()

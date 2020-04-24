@@ -31,11 +31,11 @@ func cmdImportData(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 		tgidstr, fcstr, name := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), strings.TrimSpace(parts[2])
 		tgid, err := strconv.ParseInt(tgidstr, 10, 64)
 		if err != nil {
-			logrus.Warnf("user name:%s, id:%s, err:%v", name, tgidstr, err)
+			_logger.Warnf("user name:%s, id:%s, err:%v", name, tgidstr, err)
 		}
 		fc, err := strconv.ParseInt(fcstr, 10, 64)
 		if err != nil {
-			logrus.Warnf("user name:%s, id:%s, fc:%s, err:%v", name, tgidstr, fcstr, err)
+			_logger.Warnf("user name:%s, id:%s, fc:%s, err:%v", name, tgidstr, fcstr, err)
 		}
 		u := storage.User{ID: int(tgid), Name: name, NSAccounts: []storage.NSAccount{{Name: name, FC: storage.FriendCode(fc)}}}
 		_, err = storage.GetUser(ctx, u.ID, 0)
@@ -78,7 +78,7 @@ func cmdUpgradeData(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	for _, u := range users {
 		_, err := u.GetAnimalCrossingIsland(ctx)
 		if err != nil {
-			logrus.WithError(err).Error("GetAnimalCrossingIsland")
+			_logger.WithError(err).Error("GetAnimalCrossingIsland")
 			continue
 		}
 	}
@@ -150,7 +150,7 @@ func cmdToggleDebugMode(message *tgbotapi.Message) (replyMessages []*tgbotapi.Me
 
 func (c ChatBot) cmdClearMessages(message *tgbotapi.Message) (replyMessages []*tgbotapi.MessageConfig, err error) {
 	if len(sentMsgs) > 0 {
-		logrus.WithField("sentMsgs len:", len(sentMsgs))
+		c.Logger.WithField("sentMsgs len:", len(sentMsgs))
 		sort.Slice(sentMsgs, func(i, j int) bool {
 			return sentMsgs[i].Time.After(sentMsgs[j].Time)
 		})
@@ -171,7 +171,7 @@ func (c ChatBot) cmdClearMessages(message *tgbotapi.Message) (replyMessages []*t
 		sentMsgs = sentMsgs[0:0]
 	}
 	cacheForEdit.Purge()
-	logrus.WithFields(logrus.Fields{
+	c.Logger.WithFields(logrus.Fields{
 		"sentMsgs len":     len(sentMsgs),
 		"cacheForEdit len": cacheForEdit.Len(),
 	}).Info("clear")

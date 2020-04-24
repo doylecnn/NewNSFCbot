@@ -51,7 +51,7 @@ func NewRouter() Router {
 // HandleFunc regist HandleFunc
 func (r Router) HandleFunc(cmd string, f func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error)) {
 	if _, ok := r.commands[cmd]; ok {
-		logrus.Fatalln(errors.New("already exists handle func"))
+		_logger.Fatalln(errors.New("already exists handle func"))
 	}
 	r.commands[cmd] = f
 }
@@ -68,11 +68,11 @@ func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	}
 	if groupID != 0 {
 		if lerr := storage.AddGroupIDToUserGroupIDs(ctx, message.From.ID, groupID); lerr != nil {
-			logrus.WithError(err).Error("add groupid to user's groupids failed")
+			_logger.WithError(err).Error("add groupid to user's groupids failed")
 		}
 		g, err := storage.GetGroup(ctx, groupID)
 		if err != nil && status.Code(err) != codes.NotFound {
-			logrus.Errorf("GetGroupError:%v", err)
+			_logger.Errorf("GetGroupError:%v", err)
 		} else if err != nil && status.Code(err) == codes.NotFound {
 			g = storage.Group{ID: message.Chat.ID, Type: message.Chat.Type, Title: message.Chat.Title}
 			g.Set(ctx)
@@ -84,7 +84,7 @@ func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 			}
 		}
 	}
-	logrus.WithFields(logrus.Fields{
+	_logger.WithFields(logrus.Fields{
 		"command":          message.Command(),
 		"args":             message.CommandArguments(),
 		"receive datetime": message.Time().Format("2016-01-02 15:04:05 -0700"),
@@ -119,7 +119,7 @@ func cmdSuggest(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 	cmd := message.Command()
 	cmds, err := getMyCommands()
 	if err != nil {
-		logrus.WithError(err).Warn("get my commands failed.")
+		_logger.WithError(err).Warn("get my commands failed.")
 	}
 	var fuzzyScores []int
 	var scoreCmdIdx map[int]int = make(map[int]int)

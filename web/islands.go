@@ -10,7 +10,6 @@ import (
 
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	"github.com/doylecnn/new-nsfc-bot/web/middleware"
-	"github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,19 +22,19 @@ func (w Web) Islands(c *gin.Context) {
 			authData, _ := c.Cookie("auth_data_str")
 			userID, err := middleware.GetAuthDataInfo(authData, "id")
 			if err != nil {
-				logrus.WithError(err).Warning("get auth data info")
+				_logger.WithError(err).Warning("get auth data info")
 				c.AbortWithError(http.StatusInternalServerError, err)
 				return
 			}
 			uid, err := strconv.ParseInt(userID, 10, 64)
 			if err != nil {
-				logrus.WithError(err).Warning("parse int")
+				_logger.WithError(err).Warning("parse int")
 				c.AbortWithError(http.StatusInternalServerError, err)
 				return
 			}
 			u, err := storage.GetUser(ctx, int(uid), 0)
 			if err != nil {
-				logrus.WithError(err).Warning("get user")
+				_logger.WithError(err).Warning("get user")
 				c.AbortWithError(http.StatusInternalServerError, err)
 				return
 			}
@@ -43,11 +42,11 @@ func (w Web) Islands(c *gin.Context) {
 			for _, gid := range u.GroupIDs {
 				us, err := storage.GetGroupUsers(ctx, gid)
 				if err != nil {
-					logrus.WithError(err).Warning("get group users")
+					_logger.WithError(err).Warning("get group users")
 					c.AbortWithError(http.StatusInternalServerError, err)
 					return
 				} else if len(us) == 0 {
-					logrus.WithError(err).Warning("no users in group")
+					_logger.WithError(err).Warning("no users in group")
 					c.AbortWithError(http.StatusInternalServerError, errors.New("not found user by groupid"))
 					return
 				}

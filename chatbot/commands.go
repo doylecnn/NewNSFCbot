@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/doylecnn/new-nsfc-bot/storage"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -166,7 +165,7 @@ func cmdDeleteMe(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 		}
 	} else if u != nil {
 		if err = u.Delete(ctx); err != nil {
-			logrus.WithError(err).Error()
+			_logger.WithError(err).Error()
 		}
 	}
 	return []*tgbotapi.MessageConfig{{
@@ -187,7 +186,7 @@ func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig,
 		}
 	}
 	if err != nil && status.Code(err) == codes.NotFound {
-		logrus.Debug("没有找到用户记录")
+		_logger.Debug("没有找到用户记录")
 		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
@@ -283,7 +282,7 @@ func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 	}
 
 	if len(us) == 0 {
-		logrus.Info("users count == 0")
+		_logger.Info("users count == 0")
 		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
@@ -342,7 +341,7 @@ func inlineQueryMyIsland(query *tgbotapi.InlineQuery) (*tgbotapi.InlineConfig, e
 	}
 	island, err := u.GetAnimalCrossingIsland(ctx)
 	if err != nil {
-		logrus.WithError(err).Info("inlineQueryMyIsland GetAnimalCrossingIsland")
+		_logger.WithError(err).Info("inlineQueryMyIsland GetAnimalCrossingIsland")
 		return nil, nil
 	}
 	if island == nil {
