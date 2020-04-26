@@ -835,14 +835,18 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 		}
 		var localDate = island.LastPrice.LocationDateTime()
 		var h = localDate.Hour()
-		if localtime.Sub(localDate) > 24*time.Hour || localtime.Sub(localDate) < 0 {
+		if localtime.Sub(localDate) > 24*time.Hour || localtime.Before(localDate) {
 			continue
-		} else if h >= 8 && h < 12 && localtime.Sub(localDate) > 4*time.Hour {
+		} else if localtime.Weekday() == 0 && localDate.Weekday() > 0 {
 			continue
-		} else if h >= 12 && h < 22 && localtime.Sub(localDate) > 10*time.Hour {
-			continue
-		} else if localDate.Weekday() > 0 && (h >= 0 && h < 8 || h >= 22 && h < 24) {
-			continue
+		} else if localtime.Weekday() > 0 {
+			if h >= 8 && h < 12 && localtime.Sub(localDate) > 4*time.Hour {
+				continue
+			} else if h >= 12 && h < 22 && localtime.Sub(localDate) > 10*time.Hour {
+				continue
+			} else if h >= 0 && h < 8 || h >= 22 && h < 24 {
+				continue
+			}
 		}
 		if !strings.HasSuffix(island.Name, "岛") {
 			island.Name += "岛"
