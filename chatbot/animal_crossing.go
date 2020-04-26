@@ -681,7 +681,7 @@ func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, en
 	return
 }
 
-/*	本周您的报价如下: 可以 点我 查询本周价格趋势
+/*	本周您的报价如下: 点我 看大图，或 点我 看表格
  *	| Sun | Mon | Tue | Wed | Thu | Fri | Sat |
  *	| - | -/105 | -/- | -/- | -/- | -/- | -/- |
  *	未录入星期日数据 无法生成查询数据 */
@@ -692,10 +692,11 @@ func formatWeekPrices(priceHistory []*storage.PriceHistory) (text string, err er
 	for i := 1; i < 13; i += 2 {
 		datePrice[(i+1)/2] = fmt.Sprintf("%s/%s", weekPrices[i], weekPrices[i+1])
 	}
-	urlpath := strings.TrimRight(strings.Join(weekPrices, "\\-"), ",\\-")
-	return fmt.Sprintf("本周您的[报价](https://ac-turnip.com/p-%s.png)如下: 可以 [点我](https://ac-turnip.com/share?f=%s) 查询本周价格趋势\n"+
+	urlpath1 := strings.TrimRight(strings.Join(weekPrices, "\\-"), ",\\-")
+	urlpath2 := strings.Join(weekPrices, "\\.")
+	return fmt.Sprintf("本周您的[报价](https://ac-turnip.com/p-%s.png)如下: [点我](https://ac-turnip.com/share?f=%s) 看大图，或 [点我](https://turnipprophet.io/?prices=%s) 看表格\n"+
 		"\\| Sun \\| Mon \\| Tue \\| Wed \\| Thu \\| Fri \\| Sat \\|\n"+
-		"\\| %s \\|", urlpath, urlpath, strings.Join(datePrice, " \\| ")), nil
+		"\\| %s \\|", urlpath1, urlpath1, urlpath2, strings.Join(datePrice, " \\| ")), nil
 }
 
 func formatWeekPricesURL(priceHistory []*storage.PriceHistory) (text string) {
