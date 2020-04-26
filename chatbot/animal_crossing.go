@@ -838,8 +838,12 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 		var h = localDate.Hour()
 		if localtime.Sub(localDate) > 24*time.Hour || localtime.Before(localDate) {
 			continue
-		} else if localtime.Weekday() == 0 && localDate.Weekday() > 0 {
-			continue
+		} else if localtime.Weekday() == 0 {
+			if localDate.Weekday() > 0 {
+				continue
+			} else if localtime.Sub(localDate) > 7*time.Hour {
+				continue
+			}
 		} else if localtime.Weekday() > 0 {
 			if h >= 8 && h < 12 && localtime.Sub(localDate) > 4*time.Hour {
 				continue
@@ -945,25 +949,26 @@ func formatIslandDTCPrice(user *storage.User, rank int) string {
 	{
 		H := d.Hour()
 		var HH int = 0
-		if H >= 8 && H < 12 {
-			HH = 12
-			timeoutOrCloseDoor = "失效"
-		} else if H >= 12 && H < 22 {
-			HH = 22
-			timeoutOrCloseDoor = "关店"
+		if d.Weekday() > 0 {
+			if H >= 8 && H < 12 {
+				HH = 12
+				timeoutOrCloseDoor = "失效"
+			} else if H >= 12 && H < 22 {
+				HH = 22
+				timeoutOrCloseDoor = "关店"
+			}
+		} else {
+			if H >= 5 && H < 12 {
+				HH = 12
+				timeoutOrCloseDoor = "离开"
+			}
 		}
 		shift := time.Date(d.Year(), d.Month(), d.Day(), HH, 0, 0, 0, user.Island.LastPrice.Timezone.Location())
 		priceTimeout = int(shift.UTC().Sub(time.Now()).Minutes())
 	}
 	var formatedString string
 	if d.Weekday() == 0 {
-		if time.Now().In(user.Island.Timezone.Location()).Hour() < 12 {
-			shift := time.Date(d.Year(), d.Month(), d.Day(), 12, 0, 0, 0, user.Island.LastPrice.Timezone.Location())
-			priceTimeout = int(shift.UTC().Sub(time.Now()).Minutes())
-			formatedString = fmt.Sprintf("%d\\. %s的 %s 菜价：__%d__，曹卖可能于%d 分钟后*离开*。", rank, markdownSafe(user.Name), markdownSafe(user.Island.Name), user.Island.LastPrice.Price, priceTimeout)
-		} else {
-			formatedString = fmt.Sprintf("%d\\. %s的 %s 菜价：__%d__，曹卖可能*已离开*。", rank, markdownSafe(user.Name), markdownSafe(user.Island.Name), user.Island.LastPrice.Price)
-		}
+		formatedString = fmt.Sprintf("%d\\. %s的 %s 菜价：__%d__，曹卖可能于%d 分钟后*%s*。", rank, markdownSafe(user.Name), markdownSafe(user.Island.Name), user.Island.LastPrice.Price, priceTimeout, timeoutOrCloseDoor)
 	} else {
 		url := formatWeekPricesURL(user.Island.WeekPriceHistory)
 		formatedString = fmt.Sprintf("%d\\. %s的 %s 菜价：[%d](%s)，将于%d 分钟后*%s*。", rank, markdownSafe(user.Name), markdownSafe(user.Island.Name), user.Island.LastPrice.Price, url, priceTimeout, timeoutOrCloseDoor)
