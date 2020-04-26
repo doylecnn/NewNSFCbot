@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	fuzzy "github.com/doylecnn/go-fuzzywuzzy"
 	"github.com/doylecnn/new-nsfc-bot/storage"
@@ -87,7 +88,7 @@ func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	_logger.WithFields(logrus.Fields{
 		"command":          message.Command(),
 		"args":             message.CommandArguments(),
-		"receive datetime": message.Time().Format("2016-01-02 15:04:05 -0700"),
+		"receive datetime": message.Time().Format(time.RFC1123Z),
 		"UID":              message.From.ID,
 		"ChatID":           message.Chat.ID,
 		"FromUser":         message.From.UserName,

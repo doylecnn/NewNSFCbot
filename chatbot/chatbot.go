@@ -279,7 +279,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 					c.Logger.WithFields(logrus.Fields{
 						"command":          message.Command(),
 						"args":             message.CommandArguments(),
-						"receive datetime": message.Time().Format("2016-01-02 15:04:05 -0700"),
+						"receive datetime": message.Time().Format(time.RFC1123Z),
 						"UID":              message.From.ID,
 						"ChatID":           message.Chat.ID,
 						"FromUser":         message.From.UserName,
@@ -292,7 +292,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 						c.Logger.WithFields(logrus.Fields{
 							"command":          message.Command(),
 							"args":             message.CommandArguments(),
-							"receive datetime": message.Time().Format("2016-01-02 15:04:05 -0700"),
+							"receive datetime": message.Time().Format(time.RFC1123Z),
 							"UID":              message.From.ID,
 							"ChatID":           message.Chat.ID,
 							"FromUser":         message.From.UserName,
@@ -304,7 +304,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 						c.Logger.WithFields(logrus.Fields{
 							"command":          message.Command(),
 							"args":             message.CommandArguments(),
-							"receive datetime": message.Time().Format("2016-01-02 15:04:05 -0700"),
+							"receive datetime": message.Time().Format(time.RFC1123Z),
 							"UID":              message.From.ID,
 							"ChatID":           message.Chat.ID,
 							"FromUser":         message.From.UserName,

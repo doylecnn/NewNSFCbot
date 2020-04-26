@@ -562,15 +562,17 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 			priceHistory = priceHistory[0:0:0]
 		}
 		priceHistory = append(priceHistory, prices...)
-	}
-	for _, ph := range priceHistory {
-		if err = ph.Set(ctx, uid); err != nil {
-			_logger.WithError(err).Error("set price history")
-			return nil, Error{InnerError: err,
-				ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
+
+		for _, ph := range priceHistory {
+			if err = ph.Set(ctx, uid); err != nil {
+				_logger.WithError(err).Error("set price history")
+				return nil, Error{InnerError: err,
+					ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
+				}
 			}
 		}
 	}
+
 	replyText, err := formatWeekPrices(priceHistory)
 	if err != nil {
 		return nil, Error{InnerError: err,
@@ -578,7 +580,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 		}
 	}
 	locNow := time.Now().In(island.Timezone.Location())
-	formatedNow := markdownSafe(locNow.Format("2006-01-02 15:04:05 -0700"))
+	formatedNow := markdownSafe(locNow.Format(time.RFC1123Z))
 	replyText = fmt.Sprintf("您的岛上时间：%s\n", formatedNow) + replyText
 	if message.Chat.IsPrivate() {
 		replyMessage = []*tgbotapi.MessageConfig{{
@@ -853,9 +855,9 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 		if err != nil {
 			_logger.WithError(err).WithFields(logrus.Fields{
 				"uid":              u.ID,
-				"weekStart":        weekStartDate.Format("2006-01-02 15:04:05 -0700"),
-				"weekEndDate":      weekStartDate.Format("2006-01-02 15:04:05 -0700"),
-				"weekStartDateLoc": weekStartDateLoc.Format("2006-01-02 15:04:05 -0700"),
+				"weekStart":        weekStartDate.Format(time.RFC1123Z),
+				"weekEndDate":      weekStartDate.Format(time.RFC1123Z),
+				"weekStartDateLoc": weekStartDateLoc.Format(time.RFC1123Z),
 			}).Error("GetWeeklyDTCPriceHistory")
 		}
 		u.Island = island

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/doylecnn/new-nsfc-bot/chatbot"
 	"github.com/doylecnn/new-nsfc-bot/storage"
@@ -196,10 +197,10 @@ func (w Web) export(c *gin.Context) {
 								if ph, err := storage.GetPriceHistory(ctx, int(u.ID)); err == nil {
 									for _, p := range ph {
 										pricehistory[p.Date.Unix()] = map[string]interface{}{
-											"date":      p.Date.Format("2006-01-02 15:04:05 -0700"),
+											"date":      p.Date.Format(time.RFC1123Z),
 											"price":     int(p.Price),
 											"timezone":  p.Timezone.String(),
-											"dateInLoc": p.LocationDateTime().Format("2006-01-02 15:04:05 -0700"),
+											"dateInLoc": p.LocationDateTime().Format(time.RFC1123Z),
 										}
 									}
 								}
