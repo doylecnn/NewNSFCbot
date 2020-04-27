@@ -929,7 +929,6 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 
 	newACNHTurnipPricesBoard := &storage.ACNHTurnipPricesBoard{TopPriceRecords: topRecords, LowestPriceRecords: lowestRecords}
 	changed = !group.ACNHTurnipPricesBoard.Equals(newACNHTurnipPricesBoard)
-	_logger.WithField("changed", changed).Debug("changed?")
 	if changed {
 		group.ACNHTurnipPricesBoard = newACNHTurnipPricesBoard
 		if err = group.Update(ctx); err != nil {

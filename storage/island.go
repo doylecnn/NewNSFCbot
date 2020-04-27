@@ -102,18 +102,6 @@ func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Isla
 	return
 }
 
-// Set island info
-func (i Island) Set(ctx context.Context, uid int) (err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
-	if err != nil {
-		return
-	}
-	defer client.Close()
-
-	_, err = client.Collection(fmt.Sprintf("users/%d/games", uid)).Doc("animal_crossing").Set(ctx, i)
-	return
-}
-
 // Update island info
 func (i Island) Update(ctx context.Context) (err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
@@ -121,12 +109,6 @@ func (i Island) Update(ctx context.Context) (err error) {
 		return
 	}
 	defer client.Close()
-	Logger.WithFields(logrus.Fields{
-		"name":     i.Name,
-		"owner":    i.Owner,
-		"timezone": i.Timezone,
-		"path":     i.Path,
-	}).Debug("update island")
 	_, err = client.Doc(i.Path).Set(ctx, i)
 	return
 }

@@ -24,7 +24,7 @@ type env struct {
 
 func main() {
 	logger := logrus.New()
-	logger.SetLevel(logrus.ErrorLevel)
+	logger.SetLevel(logrus.InfoLevel)
 	env := readEnv()
 	storage.ProjectID = env.projectID
 	if h, err := stackdriverhook.NewStackDriverHook(env.projectID, "nsfcbot"); err != nil {
