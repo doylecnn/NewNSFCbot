@@ -76,7 +76,7 @@ func cmdUpgradeData(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	}
 	defer client.Close()
 	for _, u := range users {
-		_, err := u.GetAnimalCrossingIsland(ctx)
+		_, _, err := u.GetAnimalCrossingIsland(ctx)
 		if err != nil {
 			_logger.WithError(err).Error("GetAnimalCrossingIsland")
 			continue

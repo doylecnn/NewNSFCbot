@@ -49,7 +49,7 @@ func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 		return
 	}
 	ctx := context.Background()
-	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
+	island, _, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			return nil, Error{InnerError: err,
@@ -147,7 +147,7 @@ func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 		}, nil
 	}
 	ctx := context.Background()
-	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
+	island, _, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			return nil, Error{InnerError: err,
@@ -285,7 +285,7 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 			nil
 	}
 	ctx := context.Background()
-	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
+	island, residentUID, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			return nil, Error{InnerError: err,
@@ -295,6 +295,10 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 		return nil, Error{InnerError: err,
 			ReplyText: "查询记录时出错狸",
 		}
+	}
+	uid := message.From.ID
+	if residentUID > 0 {
+		uid = residentUID
 	}
 	if len(island.OnBoardQueueID) != 0 {
 		queue, _ := island.GetOnboardQueue(ctx)
@@ -344,7 +348,7 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 	if len(owner) == 0 {
 		owner = message.From.FirstName
 	}
-	queue, err := island.CreateOnboardQueue(ctx, int64(message.From.ID), owner, password, specialInfo, maxGuestCount)
+	queue, err := island.CreateOnboardQueue(ctx, int64(uid), owner, password, specialInfo, maxGuestCount)
 	if err != nil {
 		_logger.WithError(err).Error("创建队列时出错")
 		return []*tgbotapi.MessageConfig{{
@@ -402,7 +406,7 @@ func cmdDismissIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 	}
 
 	ctx := context.Background()
-	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
+	island, _, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			return nil, Error{InnerError: err,

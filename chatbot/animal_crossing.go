@@ -104,7 +104,7 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 			}
 		}
 	} else {
-		if island, err = u.GetAnimalCrossingIsland(ctx); err != nil && status.Code(err) != codes.NotFound {
+		if island, _, err = u.GetAnimalCrossingIsland(ctx); err != nil && status.Code(err) != codes.NotFound {
 			return nil, Error{InnerError: err,
 				ReplyText: fmt.Sprintf("添加岛屿时失败狸。error info: %v", err),
 			}
@@ -163,7 +163,7 @@ func cmdUpdateIslandBaseInfo(message *tgbotapi.Message) (replyMessage []*tgbotap
 		return
 	}
 	ctx := context.Background()
-	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
+	island, _, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
 	if err != nil {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询记录时出错了狸",
@@ -222,7 +222,7 @@ func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.M
 	timezone := storage.Timezone(hours*60*60 + minutes*60)
 
 	ctx := context.Background()
-	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
+	island, residentUID, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询记录时出错了狸",
@@ -232,6 +232,9 @@ func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.M
 		return nil, Error{InnerError: err,
 			ReplyText: "更新时区时出错狸",
 		}
+	}
+	if residentUID > 0 {
+		uid = residentUID
 	}
 	oldtimezone := island.Timezone
 	island.Timezone = timezone
@@ -283,7 +286,7 @@ func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.M
 
 func cmdMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	ctx := context.Background()
-	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
+	island, _, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
 	if err != nil {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询记录时出错了狸",
@@ -327,7 +330,7 @@ func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 		}
 	}
 	_logger.Debugf("user:%s", u.Name)
-	island, err := u.GetAnimalCrossingIsland(ctx)
+	island, _, err := u.GetAnimalCrossingIsland(ctx)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			return nil, Error{InnerError: err,
@@ -389,8 +392,7 @@ func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 				Text: "没有找到您的记录，请先使用 addisland 命令添加岛屿记录狸"}},
 			nil
 	}
-	_logger.Debugf("user:%s", u.Name)
-	island, err := u.GetAnimalCrossingIsland(ctx)
+	island, _, err := u.GetAnimalCrossingIsland(ctx)
 	if err != nil {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询记录时出错狸",
@@ -511,7 +513,7 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 }
 
 func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, uid int, argstr string) (replyMessage []*tgbotapi.MessageConfig, err error) {
-	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
+	island, residentUID, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			return nil, Error{InnerError: err,
@@ -521,6 +523,9 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 		return nil, Error{InnerError: err,
 			ReplyText: "查找您的岛屿信息时出错狸",
 		}
+	}
+	if residentUID > 0 {
+		uid = residentUID
 	}
 	var prices []*storage.PriceHistory
 	var weekStartDateUTC = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
@@ -728,7 +733,7 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 	uid := message.From.ID
 	localtime := time.Now()
 	ctx := context.Background()
-	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
+	island, _, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
 		localtime = localtime.In(time.FixedZone("+0800", 8*3600))
 	} else {
@@ -827,7 +832,7 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 
 	var priceUsers []*storage.User
 	for _, u := range users {
-		island, err := u.GetAnimalCrossingIsland(ctx)
+		island, residentUID, err := u.GetAnimalCrossingIsland(ctx)
 		if err != nil || island == nil {
 			continue
 		}
@@ -860,7 +865,11 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 		var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 0, 0, 0, 0, island.Timezone.Location())
 		var weekStartDate = weekStartDateLoc.UTC()
 		var weekEndDate = weekStartDate.AddDate(0, 0, 7)
-		island.WeekPriceHistory, err = storage.GetWeeklyDTCPriceHistory(ctx, u.ID, weekStartDate, weekEndDate)
+		uid := u.ID
+		if residentUID > 0 {
+			uid = residentUID
+		}
+		island.WeekPriceHistory, err = storage.GetWeeklyDTCPriceHistory(ctx, uid, weekStartDate, weekEndDate)
 		if err != nil {
 			_logger.WithError(err).WithFields(logrus.Fields{
 				"uid":              u.ID,
@@ -1166,7 +1175,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 			nil
 	}
 
-	island, err := user.GetAnimalCrossingIsland(ctx)
+	island, _, err := user.GetAnimalCrossingIsland(ctx)
 	if err != nil {
 		return nil, Error{InnerError: err,
 			ReplyText: "查询记录时出错狸",

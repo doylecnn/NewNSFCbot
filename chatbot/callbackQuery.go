@@ -136,7 +136,7 @@ func callbackQueryUpdateQueuePassword(query *tgbotapi.CallbackQuery) (callbackCo
 	queueID := query.Data[16:]
 	uid := query.From.ID
 	ctx := context.Background()
-	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
+	island, residentUID, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
 		_logger.WithError(err).Error("query island failed")
 		return tgbotapi.CallbackConfig{
@@ -144,6 +144,9 @@ func callbackQueryUpdateQueuePassword(query *tgbotapi.CallbackQuery) (callbackCo
 			Text:            "failed",
 			ShowAlert:       false,
 		}, nil
+	}
+	if residentUID > 0 {
+		uid = residentUID
 	}
 
 	if island.OnBoardQueueID != queueID {
@@ -348,7 +351,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 	queueID := query.Data[6:]
 	uid := query.From.ID
 	ctx := context.Background()
-	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
+	island, _, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
 		_logger.WithError(err).Error("query island failed")
 		return tgbotapi.CallbackConfig{
@@ -600,10 +603,13 @@ func callbackQueryDismissQueue(query *tgbotapi.CallbackQuery) (callbackConfig tg
 	queueID := query.Data[9:]
 	uid := query.From.ID
 	ctx := context.Background()
-	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
+	island, residentUID, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
 		_logger.WithError(err).Error("query island failed")
 		return
+	}
+	if residentUID > 0 {
+		uid = residentUID
 	}
 	if len(island.OnBoardQueueID) == 0 {
 		_, err = tgbot.Send(tgbotapi.EditMessageTextConfig{
@@ -635,11 +641,11 @@ func callbackQueryDismissQueue(query *tgbotapi.CallbackQuery) (callbackConfig tg
 	}
 	_, err = tgbot.Send(tgbotapi.EditMessageTextConfig{
 		BaseEdit: tgbotapi.BaseEdit{
-			ChatID:    int64(uid),
+			ChatID:    int64(query.From.ID),
 			MessageID: query.Message.MessageID},
 		Text: "队列已解散"})
 	if err != nil {
-		_logger.WithError(err).WithFields(logrus.Fields{"uid": uid,
+		_logger.WithError(err).WithFields(logrus.Fields{"uid": query.From.ID,
 			"msgID": query.Message.MessageID}).Error("edit message failed")
 	}
 	return tgbotapi.CallbackConfig{

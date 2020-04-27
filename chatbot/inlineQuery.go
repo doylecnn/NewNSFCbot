@@ -37,7 +37,7 @@ func inlineQueryShareQueue(query *tgbotapi.InlineQuery) (rst *tgbotapi.InlineCon
 	uid := query.From.ID
 	queueID := query.Query[7:]
 	ctx := context.Background()
-	island, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
+	island, _, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
 		return
 	}

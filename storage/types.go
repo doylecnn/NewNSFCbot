@@ -301,17 +301,17 @@ func AddGroupIDToUserGroupIDs(ctx context.Context, userID int, groupID int64) (e
 }
 
 // GetAnimalCrossingIsland get island name
-func (u *User) GetAnimalCrossingIsland(ctx context.Context) (island *Island, err error) {
+func (u *User) GetAnimalCrossingIsland(ctx context.Context) (island *Island, residentUID int, err error) {
 	if u == nil {
 		return
 	}
 
-	island, err = GetAnimalCrossingIslandByUserID(ctx, u.ID)
+	island, residentUID, err = GetAnimalCrossingIslandByUserID(ctx, u.ID)
 	if err != nil {
 		if status.Code(err) != codes.NotFound {
 			Logger.Warnf("failed when get island: %v", err)
 		}
-		return nil, err
+		return nil, 0, err
 	}
 	return
 }

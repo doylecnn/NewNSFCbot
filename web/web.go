@@ -191,7 +191,7 @@ func (w Web) export(c *gin.Context) {
 							nsaccounts = append(nsaccounts, nsAccount{FC: int64(a.FC), Name: a.Name})
 						}
 						var games []game
-						if axi, err := u.GetAnimalCrossingIsland(ctx); err == nil {
+						if axi, _, err := u.GetAnimalCrossingIsland(ctx); err == nil {
 							if axi != nil {
 								var pricehistory map[int64]map[string]interface{} = map[int64]map[string]interface{}{}
 								if ph, err := storage.GetPriceHistory(ctx, int(u.ID)); err == nil {

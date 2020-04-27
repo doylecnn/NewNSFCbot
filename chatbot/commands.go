@@ -339,7 +339,7 @@ func inlineQueryMyIsland(query *tgbotapi.InlineQuery) (*tgbotapi.InlineConfig, e
 			IsPersonal:    true,
 		}, nil
 	}
-	island, err := u.GetAnimalCrossingIsland(ctx)
+	island, _, err := u.GetAnimalCrossingIsland(ctx)
 	if err != nil {
 		_logger.WithError(err).Info("inlineQueryMyIsland GetAnimalCrossingIsland")
 		return nil, nil

@@ -34,7 +34,7 @@ func (w Web) User(c *gin.Context) {
 				} else if user == nil {
 					c.AbortWithError(http.StatusInternalServerError, errors.New("not found user by userid"))
 				} else {
-					island, err := user.GetAnimalCrossingIsland(ctx)
+					island, _, err := user.GetAnimalCrossingIsland(ctx)
 					if err != nil {
 						c.AbortWithError(http.StatusInternalServerError, err)
 					}

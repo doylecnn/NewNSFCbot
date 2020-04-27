@@ -60,7 +60,7 @@ func (w Web) Islands(c *gin.Context) {
 			var haveIslandUsers []storage.User
 			var priceOutDate []bool
 			for _, user := range users {
-				island, err := user.GetAnimalCrossingIsland(ctx)
+				island, _, err := user.GetAnimalCrossingIsland(ctx)
 				if err != nil || island == nil {
 					continue
 				}

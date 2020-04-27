@@ -59,7 +59,7 @@ type Island struct {
 }
 
 // GetAnimalCrossingIslandByUserID get island by user id
-func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Island, err error) {
+func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Island, residentUID int, err error) {
 	client, err := firestore.NewClient(ctx, ProjectID)
 	if err != nil {
 		return
@@ -70,7 +70,7 @@ func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Isla
 	if err != nil {
 		if status.Code(err) != codes.NotFound {
 			Logger.WithError(err).WithField("uid", uid).Error("failed when get island")
-			return nil, err
+			return nil, 0, err
 		}
 	}
 	island = &Island{}
@@ -78,12 +78,13 @@ func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Isla
 		return
 	}
 	if island.ResidentUID > 0 {
-		var islandDocPath = fmt.Sprintf("users/%d/games/animal_crossing", island.ResidentUID)
+		residentUID = island.ResidentUID
+		islandDocPath = fmt.Sprintf("users/%d/games/animal_crossing", island.ResidentUID)
 		dsnap, err = client.Doc(islandDocPath).Get(ctx)
 		if err != nil {
 			if status.Code(err) != codes.NotFound {
 				Logger.WithError(err).WithField("uid", island.ResidentUID).Error("failed when get island by ResidentUID")
-				return nil, err
+				return nil, 0, err
 			}
 		}
 		island = &Island{}
@@ -342,10 +343,13 @@ func (p PriceHistory) LocationDateTime() (datetime time.Time) {
 
 // UpdateDTCPrice 更新 大头菜 菜价
 func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
-	island, err := GetAnimalCrossingIslandByUserID(ctx, uid)
+	island, residentUID, err := GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
 		Logger.WithError(err).Error("GetAnimalCrossingIslandByUserID")
 		return
+	}
+	if residentUID > 0 {
+		uid = residentUID
 	}
 	lp, err := GetLastPriceHistory(ctx, uid, island.LastPrice.Date)
 	if err != nil {
