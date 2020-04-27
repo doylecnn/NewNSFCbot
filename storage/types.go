@@ -345,6 +345,9 @@ func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupI
 				Logger.WithError(err).Error("error when DataTo island")
 				continue
 			}
+			if island.ResidentUID > 0 {
+				continue
+			}
 
 			name = strings.ToLower(name)
 			if strings.HasSuffix(name, "岛") {
@@ -402,6 +405,9 @@ func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string, g
 				Logger.WithError(err).Error("error when DataTo island")
 				continue
 			}
+			if island.ResidentUID > 0 {
+				continue
+			}
 			if island.OwnerInsensitive == strings.ToLower(name) {
 				u := &User{}
 				if err = doc.DataTo(u); err != nil {
@@ -448,6 +454,9 @@ func GetUsersByAnimalCrossingIslandInfo(ctx context.Context, info string, groupI
 			var island Island
 			if err = islandDoc.DataTo(&island); err != nil {
 				Logger.WithError(err).Error("error when DataTo island")
+				continue
+			}
+			if island.ResidentUID > 0 {
 				continue
 			}
 			if len(island.BaseInfo) == 0 && len(island.Fruits) > 0 {

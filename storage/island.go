@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/api/iterator"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -56,6 +54,7 @@ type Island struct {
 	LastPrice        PriceHistory    `firestore:"LastPrice,omitempty"`
 	Owner            string          `firestore:"owner,omitempty"`
 	OwnerInsensitive string          `firestore:"owner_insensitive,omitempty"`
+	ResidentUID      int             `firestore:"resident_userid,omitempty"` // 指向真正的岛主
 	WeekPriceHistory []*PriceHistory `firestore:"-"`
 }
 
@@ -70,24 +69,30 @@ func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Isla
 	dsnap, err := client.Doc(islandDocPath).Get(ctx)
 	if err != nil {
 		if status.Code(err) != codes.NotFound {
-			Logger.Warnf("failed when get island: %v", err)
+			Logger.WithError(err).WithField("uid", uid).Error("failed when get island")
+			return nil, err
 		}
-		return nil, err
 	}
 	island = &Island{}
 	if err = dsnap.DataTo(island); err != nil {
 		return
 	}
+	if island.ResidentUID > 0 {
+		var islandDocPath = fmt.Sprintf("users/%d/games/animal_crossing", island.ResidentUID)
+		dsnap, err = client.Doc(islandDocPath).Get(ctx)
+		if err != nil {
+			if status.Code(err) != codes.NotFound {
+				Logger.WithError(err).WithField("uid", island.ResidentUID).Error("failed when get island by ResidentUID")
+				return nil, err
+			}
+		}
+		island = &Island{}
+		if err = dsnap.DataTo(island); err != nil {
+			return
+		}
+	}
 	island.Path = islandDocPath
 	needUpdate := false
-	if math.Abs(float64(island.Timezone)) > 1000000000.0 {
-		island.Timezone /= 1000000000
-		needUpdate = true
-	}
-	if math.Abs(float64(island.LastPrice.Timezone)) > 1000000000.0 {
-		island.LastPrice.Timezone /= 1000000000
-		needUpdate = true
-	}
 	if island.AirportIsOpen {
 		locOpenTime := island.OpenTime.In(island.Timezone.Location())
 		locNow := time.Now().In(island.Timezone.Location())
