@@ -5,6 +5,9 @@ import (
 	"io/ioutil"
 	"os"
 	"strconv"
+	"time"
+
+	"math/rand"
 
 	"github.com/doylecnn/new-nsfc-bot/chatbot"
 	"github.com/doylecnn/new-nsfc-bot/stackdriverhook"
@@ -23,6 +26,7 @@ type env struct {
 }
 
 func main() {
+	rand.Seed(time.Now().Unix())
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
 	env := readEnv()

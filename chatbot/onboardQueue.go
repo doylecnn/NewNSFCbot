@@ -31,8 +31,7 @@ func cmdStart(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 
 队列主：
 /queue [密码] 开启新的队列
-/queue [密码] [开岛说明] 开启新的队列，同时更新开岛说明
-/queue [密码] [开岛说明] [最大客人数] 开启新的队列，同时更新开岛说明，同时根据队列信息，半自动邀请下一位旅客（尚未实现）
+/queue [密码] [最大客人数] 开启新的队列，同时根据队列信息，半自动邀请下一位旅客（尚未实现）
 /myqueue 列出自己创建的队列
 /dismiss 解散自己创建的队列
 
@@ -254,7 +253,7 @@ func cmdJoinedQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		if err != nil {
 			continue
 		}
-		var btn = tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("队列：%s，位置 %d/%d", q.Name, position+1, q.Len()), "/showqueueinfo_"+q.ID)
+		var btn = tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("队列：%s，位置 %d/%d", q.Name, position, q.Len()), fmt.Sprintf("/showqueueinfo_%s", q.ID))
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(btn))
 	}
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
@@ -326,21 +325,12 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 			ReplyText: "请输入 Dodo Airlines 工作人员 莫里（Orville）提供的 5 位密码",
 		}
 	}
-	var specialInfo = ""
-	if len(args) >= 2 {
-		specialInfo = args[1]
-	}
 	var maxGuestCount = 0
-	if len(args) == 3 {
-		maxGuestCount, err = strconv.Atoi(args[2])
-		if err != nil {
+	if len(args) == 2 {
+		maxGuestCount, err = strconv.Atoi(args[1])
+		if err != nil || maxGuestCount < 1 || maxGuestCount > 7 {
 			return nil, Error{InnerError: err,
-				ReplyText: "第三个参数：同时登岛客人数必须是数字，取值范围 [1，7]",
-			}
-		}
-		if maxGuestCount < 1 || maxGuestCount > 7 {
-			return nil, Error{InnerError: err,
-				ReplyText: "第三个参数：同时登岛客人数必须是数字，取值范围 [1，7]",
+				ReplyText: "第二个参数：同时登岛客人数必须是数字，取值范围 [1，7]",
 			}
 		}
 	}
@@ -348,7 +338,7 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 	if len(owner) == 0 {
 		owner = message.From.FirstName
 	}
-	queue, err := island.CreateOnboardQueue(ctx, int64(uid), owner, password, specialInfo, maxGuestCount)
+	queue, err := island.CreateOnboardQueue(ctx, int64(uid), owner, password, maxGuestCount)
 	if err != nil {
 		_logger.WithError(err).Error("创建队列时出错")
 		return []*tgbotapi.MessageConfig{{

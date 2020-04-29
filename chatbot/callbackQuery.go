@@ -18,6 +18,10 @@ import (
 
 //HandleCallbackQuery handle all CallbackQuery
 func (c ChatBot) HandleCallbackQuery(query *tgbotapi.CallbackQuery) {
+	_logger.WithFields(logrus.Fields{"data": query.Data,
+		"from":    query.From.ID,
+		"queryID": query.ID,
+	}).Info("receive callbackquery")
 	var err error
 	var result tgbotapi.CallbackConfig
 	var processed = false
@@ -134,30 +138,18 @@ func callbackQueryStartQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 
 func callbackQueryUpdateQueuePassword(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
 	queueID := query.Data[16:]
-	uid := query.From.ID
 	ctx := context.Background()
-	island, residentUID, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
+	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
-		_logger.WithError(err).Error("query island failed")
+		_logger.WithError(err).Error("create firestore client failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
 			ShowAlert:       false,
 		}, nil
 	}
-	if residentUID > 0 {
-		uid = residentUID
-	}
-
-	if island.OnBoardQueueID != queueID {
-		_logger.WithError(err).Error("not island owner")
-		return tgbotapi.CallbackConfig{
-			CallbackQueryID: query.ID,
-			Text:            "你不能操作别人的队列",
-			ShowAlert:       false,
-		}, nil
-	}
-	queue, err := island.GetOnboardQueue(ctx)
+	defer client.Close()
+	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
 		_logger.WithError(err).Error("query queue failed")
 		return tgbotapi.CallbackConfig{
@@ -203,6 +195,7 @@ func callbackQueryShowQueueMembers(query *tgbotapi.CallbackQuery) (callbackConfi
 			ShowAlert:       false,
 		}, nil
 	}
+	defer client.Close()
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
 		_logger.WithError(err).Error("query queue failed")
@@ -220,13 +213,30 @@ func callbackQueryShowQueueMembers(query *tgbotapi.CallbackQuery) (callbackConfi
 			ShowAlert:       false,
 		}, nil
 	}
-	if queue.Len() == 0 {
+	if queue.Len() == 0 && queue.LandedLen() == 0 {
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "目前队列为空",
 			ShowAlert:       false,
 		}, nil
 	}
+	replyText := "当前在岛\n"
+	var landed []string
+	for _, p := range queue.Landed {
+		var name string
+		if len(p.Name) > 0 {
+			name = "@" + p.Name
+		} else {
+			name = fmt.Sprintf("tg://user?id=%d", p.UID)
+		}
+		landed = append(landed, name)
+	}
+	if len(landed) > 0 {
+		replyText += strings.Join(landed, "\n")
+	} else {
+		replyText += "0人"
+	}
+	replyText += "\n排队中\n"
 	var queueInfo []string
 	for _, p := range queue.Queue {
 		var name string
@@ -237,20 +247,10 @@ func callbackQueryShowQueueMembers(query *tgbotapi.CallbackQuery) (callbackConfi
 		}
 		queueInfo = append(queueInfo, name)
 	}
-	if len(queueInfo) == 0 {
-		return tgbotapi.CallbackConfig{
-			CallbackQueryID: query.ID,
-			Text:            "目前队列为空",
-			ShowAlert:       false,
-		}, nil
-	}
-	replyText := strings.Join(queueInfo, "\n")
-	if len(replyText) == 0 {
-		return tgbotapi.CallbackConfig{
-			CallbackQueryID: query.ID,
-			Text:            "目前队列为空",
-			ShowAlert:       false,
-		}, nil
+	if len(landed) > 0 {
+		replyText += strings.Join(queueInfo, "\n")
+	} else {
+		replyText += "0人"
 	}
 	_, err = tgbot.Send(&tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
@@ -290,6 +290,7 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 			ShowAlert:       false,
 		}, nil
 	}
+	defer client.Close()
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -340,6 +341,9 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 			}
 		}()
 	}
+	if queue.IsAuto && queue.MaxGuestCount > 0 && queue.LandedLen() < queue.MaxGuestCount {
+		sendNotify(ctx, client, queue)
+	}
 	return tgbotapi.CallbackConfig{
 		CallbackQueryID: query.ID,
 		Text:            "成功离开队列",
@@ -349,47 +353,7 @@ func callbackQueryLeaveQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbo
 
 func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
 	queueID := query.Data[6:]
-	uid := query.From.ID
 	ctx := context.Background()
-	island, _, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
-	if err != nil {
-		_logger.WithError(err).Error("query island failed")
-		return tgbotapi.CallbackConfig{
-			CallbackQueryID: query.ID,
-			Text:            "failed",
-			ShowAlert:       false,
-		}, nil
-	}
-
-	if len(island.OnBoardQueueID) == 0 {
-		_, err = tgbot.Send(tgbotapi.EditMessageTextConfig{
-			BaseEdit: tgbotapi.BaseEdit{
-				ChatID:    int64(uid),
-				MessageID: query.Message.MessageID},
-			Text: "队列已解散"})
-		return tgbotapi.CallbackConfig{
-			CallbackQueryID: query.ID,
-			Text:            "解散成功",
-			ShowAlert:       false,
-		}, nil
-	}
-	if island.OnBoardQueueID != queueID {
-		_logger.WithError(err).Error("not island owner")
-		return tgbotapi.CallbackConfig{
-			CallbackQueryID: query.ID,
-			Text:            "你不能操作别人的队列",
-			ShowAlert:       false,
-		}, nil
-	}
-	queue, err := island.GetOnboardQueue(ctx)
-	if err != nil {
-		_logger.WithError(err).Error("query queue failed")
-		return tgbotapi.CallbackConfig{
-			CallbackQueryID: query.ID,
-			Text:            "failed",
-			ShowAlert:       false,
-		}, nil
-	}
 	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
 		_logger.WithError(err).Error("create firestore client failed")
@@ -399,8 +363,25 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 			ShowAlert:       false,
 		}, nil
 	}
-	chatID, err := queue.Next(ctx, client)
+	defer client.Close()
+	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
+		_logger.WithError(err).Error("query queue failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	if queue.MaxGuestCount > 0 && queue.LandedLen() == queue.MaxGuestCount {
+		_logger.WithError(err).Error("island is full")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "已达到同时登岛人数上限",
+			ShowAlert:       false,
+		}, nil
+	}
+	if err = sendNotify(ctx, client, queue); err != nil {
 		if err.Error() == "queue is empty" {
 			return tgbotapi.CallbackConfig{
 				CallbackQueryID: query.ID,
@@ -408,31 +389,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 				ShowAlert:       false,
 			}, nil
 		}
-		_logger.WithError(err).Error("append queue failed")
-		return tgbotapi.CallbackConfig{
-			CallbackQueryID: query.ID,
-			Text:            "failed",
-			ShowAlert:       false,
-		}, nil
-	}
 
-	var comingBtn = tgbotapi.NewInlineKeyboardButtonData("准备起飞！"+queue.Name, "/coming_"+queue.ID)
-	var sorryBtn = tgbotapi.NewInlineKeyboardButtonData("抱歉不能来了……", "/sorry_"+queue.ID)
-	var doneBtn = tgbotapi.NewInlineKeyboardButtonData("我要回家啦！", "/done_"+queue.ID)
-	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(comingBtn),
-		tgbotapi.NewInlineKeyboardRow(doneBtn),
-		tgbotapi.NewInlineKeyboardRow(sorryBtn))
-	_, err = tgbot.Send(&tgbotapi.MessageConfig{
-		BaseChat: tgbotapi.BaseChat{
-			ChatID:      chatID,
-			ReplyMarkup: replyMarkup,
-		},
-		Text:      fmt.Sprintf("轮到你了！\n密码：*%s*\n%s\n如果不能前往，请务必和岛主联系！", queue.Password, markdownSafe(queue.IslandInfo)),
-		ParseMode: "MarkdownV2",
-	})
-	if err != nil {
-		_logger.WithError(err).Error("notify next failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
 			Text:            "failed",
@@ -447,8 +404,90 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 	}, nil
 }
 
+func sendNotify(ctx context.Context, client *firestore.Client, queue *storage.OnboardQueue) (err error) {
+	var chatID int64
+	var comingBtn = tgbotapi.NewInlineKeyboardButtonData("准备起飞！"+queue.Name, "/coming_"+queue.ID)
+	var sorryBtn = tgbotapi.NewInlineKeyboardButtonData("抱歉不能来了……", "/sorry_"+queue.ID)
+	var doneBtn = tgbotapi.NewInlineKeyboardButtonData("我要回家啦！", "/done_"+queue.ID)
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(comingBtn),
+		tgbotapi.NewInlineKeyboardRow(doneBtn),
+		tgbotapi.NewInlineKeyboardRow(sorryBtn))
+	var replymessages []tgbotapi.MessageConfig
+	if queue.IsAuto && queue.LandedLen() < queue.MaxGuestCount {
+		batch := client.Batch()
+		i := 0
+		for ; i < queue.MaxGuestCount-queue.LandedLen() && i < queue.MaxGuestCount && i < queue.Len(); i++ {
+			guest := queue.Queue[i]
+			chatID = guest.UID
+			m := tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:      chatID,
+					ReplyMarkup: replyMarkup,
+				},
+				Text:      fmt.Sprintf("轮到你了！\n密码：*%s*\n%s\n如果不能前往，请务必和岛主联系！", queue.Password, markdownSafe(queue.IslandInfo)),
+				ParseMode: "MarkdownV2",
+			}
+			replymessages = append(replymessages, m)
+			queueRef := client.Collection("onboardQueues").Doc(queue.ID)
+			batch.Update(queueRef, []firestore.Update{
+				{Path: "queue", Value: firestore.ArrayRemove(guest)},
+				{Path: "uids", Value: firestore.ArrayRemove(guest.UID)},
+				{Path: "landed", Value: firestore.ArrayUnion(guest)},
+			})
+		}
+		copy(queue.Queue[0:], queue.Queue[i:])
+		queue.Queue = queue.Queue[:len(queue.Queue)-i]
+		_, err := batch.Commit(ctx)
+		if err != nil {
+			// Handle any errors in an appropriate way, such as returning them.
+			_logger.WithError(err).Error("An error has occurred when remove guest in queue")
+		}
+	} else {
+		chatID, err = queue.Next(ctx, client)
+		if err != nil {
+			_logger.WithError(err).Error("queue get next failed")
+			return
+		}
+		replymessages = []tgbotapi.MessageConfig{{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:      chatID,
+				ReplyMarkup: replyMarkup,
+			},
+			Text:      fmt.Sprintf("轮到你了！\n密码：*%s*\n%s\n如果不能前往，请务必和岛主联系！", queue.Password, markdownSafe(queue.IslandInfo)),
+			ParseMode: "MarkdownV2",
+		}}
+	}
+	for _, m := range replymessages {
+		_, err = tgbot.Send(&m)
+		if err != nil {
+			_logger.WithError(err).Error("notify next failed")
+		}
+	}
+	for i := 0; i < 3 && i < queue.Len(); i++ {
+		var sorryBtn = tgbotapi.NewInlineKeyboardButtonData("抱歉不能来了……", "/sorry_"+queue.ID)
+		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(sorryBtn))
+		_, err = tgbot.Send(&tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:      queue.Queue[i].UID,
+				ReplyMarkup: replyMarkup,
+			},
+			Text:      fmt.Sprintf("岛屿：%s\n\n马上就要轮到你了！请做好准备并确认：网络没问题，行李已带齐，前往机场开始与工作鸟员对话，使用密码搜索岛屿。\n如果不能前往，请务必和岛主联系！", markdownSafe(queue.IslandInfo)),
+			ParseMode: "MarkdownV2",
+		})
+	}
+	return
+}
+
 func callbackQueryShowQueueInfo(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
-	queueID := query.Data[15:]
+	argstr := query.Data[15:]
+	args := strings.Split(argstr, "|")
+	queueID := args[0]
+	unixtime := time.Now().Unix()
+	if len(args) > 1 {
+		unixtime, _ = strconv.ParseInt(args[1], 10, 64)
+	}
 	uid := int64(query.From.ID)
 	username := query.From.UserName
 	if len(username) == 0 {
@@ -464,6 +503,7 @@ func callbackQueryShowQueueInfo(query *tgbotapi.CallbackQuery) (callbackConfig t
 			ShowAlert:       false,
 		}, nil
 	}
+	defer client.Close()
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -489,16 +529,15 @@ func callbackQueryShowQueueInfo(query *tgbotapi.CallbackQuery) (callbackConfig t
 			ShowAlert:       false,
 		}, nil
 	}
+	var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", fmt.Sprintf("/position_%s|%d", queue.ID, unixtime))
 	var leaveBtn = tgbotapi.NewInlineKeyboardButtonData("离开队列："+queue.Name, "/leave_"+queue.ID)
-	var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", "/position_"+queue.ID)
-	var listBtn = tgbotapi.NewInlineKeyboardButtonData("队列成员", "/showqueuemember_"+queue.ID)
-	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, listBtn, leaveBtn))
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, leaveBtn))
 	tgbot.Send(&tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:      uid,
 			ReplyMarkup: replyMarkup,
 		},
-		Text: fmt.Sprintf("正在队列：%s 中排队，当前位置：%d/%d", queue.Name, l+1, t),
+		Text: fmt.Sprintf("正在队列：%s 中排队，当前位置：%d/%d。\n当前岛上有 %d 个客人\n已排队 %d 分钟", queue.Name, l, t, queue.LandedLen(), int(time.Since(time.Unix(unixtime, 0)).Minutes())),
 	})
 	return tgbotapi.CallbackConfig{
 		CallbackQueryID: query.ID,
@@ -524,6 +563,7 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 			ShowAlert:       false,
 		}, nil
 	}
+	defer client.Close()
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -567,30 +607,33 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 	if err != nil {
 		t++
 	}
-	var leaveBtn = tgbotapi.NewInlineKeyboardButtonData("离开队列："+queue.Name, "/leave_"+queue.ID)
-	var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", "/position_"+queue.ID)
-	var listBtn = tgbotapi.NewInlineKeyboardButtonData("队列成员", "/showqueuemember_"+queue.ID)
-	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, listBtn, leaveBtn))
-	tgbot.Send(&tgbotapi.MessageConfig{
-		BaseChat: tgbotapi.BaseChat{
-			ChatID:      uid,
-			ReplyMarkup: replyMarkup,
-		},
-		Text: fmt.Sprintf("正在队列：%s 中排队，当前位置：%d/%d", queue.Name, l+1, t),
-	})
-	sentMsg, err := tgbot.Send(&tgbotapi.MessageConfig{
-		BaseChat: tgbotapi.BaseChat{
-			ChatID: queue.OwnerID,
-		},
-		Text: fmt.Sprintf("@%s 加入了队列", username),
-	})
-	if err != nil {
-		_logger.WithError(err).Error("send msg failed")
-	} else {
-		go func() {
-			time.Sleep(55 * time.Second)
-			tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(sentMsg.Chat.ID, sentMsg.MessageID))
-		}()
+	if !queue.IsAuto {
+		var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", fmt.Sprintf("/position_%s|%d", queue.ID, time.Now().Unix()))
+		var leaveBtn = tgbotapi.NewInlineKeyboardButtonData("离开队列："+queue.Name, "/leave_"+queue.ID)
+		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, leaveBtn))
+		tgbot.Send(&tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:      uid,
+				ReplyMarkup: replyMarkup,
+			},
+			Text: fmt.Sprintf("正在队列：%s 中排队，当前位置：%d/%d。\n当前岛上有 %d 个客人", queue.Name, l, t, queue.LandedLen()),
+		})
+		sentMsg, err := tgbot.Send(&tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID: queue.OwnerID,
+			},
+			Text: fmt.Sprintf("@%s 加入了队列", username),
+		})
+		if err != nil {
+			_logger.WithError(err).Error("send msg failed")
+		} else {
+			go func() {
+				time.Sleep(55 * time.Second)
+				tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(sentMsg.Chat.ID, sentMsg.MessageID))
+			}()
+		}
+	} else if queue.IsAuto && queue.LandedLen() < queue.MaxGuestCount {
+		sendNotify(ctx, client, queue)
 	}
 	return tgbotapi.CallbackConfig{
 		CallbackQueryID: query.ID,
@@ -601,44 +644,27 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 
 func callbackQueryDismissQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
 	queueID := query.Data[9:]
-	uid := query.From.ID
 	ctx := context.Background()
-	island, residentUID, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
+	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
-		_logger.WithError(err).Error("query island failed")
-		return
-	}
-	if residentUID > 0 {
-		uid = residentUID
-	}
-	if len(island.OnBoardQueueID) == 0 {
-		_, err = tgbot.Send(tgbotapi.EditMessageTextConfig{
-			BaseEdit: tgbotapi.BaseEdit{
-				ChatID:    int64(uid),
-				MessageID: query.Message.MessageID},
-			Text: "队列已解散"})
+		_logger.WithError(err).Error("create firestore client failed")
 		return tgbotapi.CallbackConfig{
 			CallbackQueryID: query.ID,
-			Text:            "解散成功",
+			Text:            "failed",
 			ShowAlert:       false,
 		}, nil
 	}
-	if island.OnBoardQueueID != queueID {
-		_logger.WithError(err).Error("not island owner")
-		return tgbotapi.CallbackConfig{
-			CallbackQueryID: query.ID,
-			Text:            "你不能操作别人的队列",
-			ShowAlert:       false,
-		}, nil
-	}
-	queue, err := island.ClearOldOnboardQueue(ctx)
+	defer client.Close()
+	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
 		_logger.WithError(err).Error("ClearOldOnboardQueue failed")
 		return
 	}
+	queue.Dismissed = true
 	for _, replyMsg := range notifyQueueDissmised(queue) {
 		tgbot.Send(replyMsg)
 	}
+	queue.Delete(ctx, client)
 	_, err = tgbot.Send(tgbotapi.EditMessageTextConfig{
 		BaseEdit: tgbotapi.BaseEdit{
 			ChatID:    int64(query.From.ID),
@@ -656,7 +682,11 @@ func callbackQueryDismissQueue(query *tgbotapi.CallbackQuery) (callbackConfig tg
 }
 
 func callbackQueryGetPositionInQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
-	queueID := query.Data[10:]
+	argstr := query.Data[10:]
+	args := strings.Split(argstr, "|")
+	queueID := args[0]
+	unixtime, _ := strconv.ParseInt(args[1], 10, 64)
+	logrus.WithFields(logrus.Fields{"queueid": queueID, "unixtime": unixtime}).Debug("callbackQueryGetPositionInQueue")
 	uid := int64(query.From.ID)
 	ctx := context.Background()
 	client, err := firestore.NewClient(ctx, _projectID)
@@ -668,6 +698,7 @@ func callbackQueryGetPositionInQueue(query *tgbotapi.CallbackQuery) (callbackCon
 			ShowAlert:       false,
 		}, nil
 	}
+	defer client.Close()
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -693,22 +724,27 @@ func callbackQueryGetPositionInQueue(query *tgbotapi.CallbackQuery) (callbackCon
 			ShowAlert:       false,
 		}, nil
 	}
+	var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", fmt.Sprintf("/position_%s|%d", queue.ID, unixtime))
 	var leaveBtn = tgbotapi.NewInlineKeyboardButtonData("离开队列："+queue.Name, "/leave_"+queue.ID)
-	var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", "/position_"+queue.ID)
-	var listBtn = tgbotapi.NewInlineKeyboardButtonData("队列成员", "/showqueuemember_"+queue.ID)
-	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, listBtn, leaveBtn))
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, leaveBtn))
 	_, err = tgbot.Send(&tgbotapi.EditMessageTextConfig{
 		BaseEdit: tgbotapi.BaseEdit{
 			ChatID:      uid,
 			MessageID:   query.Message.MessageID,
 			ReplyMarkup: &replyMarkup,
 		},
-		Text: fmt.Sprintf("正在队列：%s 中排队，当前位置：%d/%d", queue.Name, l+1, t),
+		Text: fmt.Sprintf("正在队列：%s 中排队，当前位置：%d/%d。\n当前岛上有 %d 个客人\n已排队 %d 分钟", queue.Name, l, t, queue.LandedLen(), int(time.Since(time.Unix(unixtime, 0)).Minutes())),
 	})
 	if err != nil {
-		_logger.WithError(err).WithFields(logrus.Fields{"uid": uid,
-			"msgID": query.Message.MessageID}).Error("edit message failed")
-		return
+		if e, ok := err.(tgbotapi.Error); !(ok && strings.HasPrefix(e.Message, "Bad Request: message is not modified:")) {
+			_logger.WithError(err).WithFields(logrus.Fields{"uid": uid,
+				"msgID": query.Message.MessageID}).Error("edit message failed")
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "您的位置没有变化",
+				ShowAlert:       false,
+			}, nil
+		}
 	}
 	err = errors.New("no_alert")
 	return
@@ -735,6 +771,7 @@ func callbackQueryComing(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi
 			ShowAlert:       false,
 		}, nil
 	}
+	defer client.Close()
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -772,7 +809,7 @@ func callbackQueryComing(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi
 		err = nil
 	}
 
-	replyText += fmt.Sprintf("\n队列剩余：%d", queue.Len())
+	replyText += fmt.Sprintf("\n队列剩余：%d\n当前在岛：%d\n", queue.Len(), queue.LandedLen())
 
 	var shareBtn = tgbotapi.NewInlineKeyboardButtonSwitch("分享队列："+queue.Name, "/share_"+queue.ID)
 	var dismissBtn = tgbotapi.NewInlineKeyboardButtonData("解散队列", "/dismiss_"+queue.ID)
@@ -830,6 +867,7 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 			ShowAlert:       false,
 		}, nil
 	}
+	defer client.Close()
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -847,6 +885,14 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 		}, nil
 	}
 
+	if err = queue.Remove(ctx, client, int64(uid)); err != nil {
+		_logger.WithError(err).Error("remove user from queue failed")
+	}
+
+	if queue.IsAuto && queue.MaxGuestCount > 0 && queue.LandedLen() < queue.MaxGuestCount {
+		sendNotify(ctx, client, queue)
+	}
+
 	_, err = tgbot.Send(&tgbotapi.EditMessageTextConfig{
 		BaseEdit: tgbotapi.BaseEdit{
 			ChatID:    query.Message.Chat.ID,
@@ -861,7 +907,7 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 		err = nil
 	}
 
-	replyText += fmt.Sprintf("\n队列剩余：%d", queue.Len())
+	replyText += fmt.Sprintf("\n队列剩余：%d\n当前在岛：%d", queue.Len(), queue.LandedLen())
 
 	var shareBtn = tgbotapi.NewInlineKeyboardButtonSwitch("分享队列："+queue.Name, "/share_"+queue.ID)
 	var dismissBtn = tgbotapi.NewInlineKeyboardButtonData("解散队列", "/dismiss_"+queue.ID)

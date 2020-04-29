@@ -28,7 +28,10 @@ func (c ChatBot) HandleInlineQuery(inlineQuery *tgbotapi.InlineQuery) {
 		if result, err := inlineQueryShareQueue(inlineQuery); err != nil {
 			_logger.Warn(err)
 		} else {
-			c.TgBotClient.AnswerInlineQuery(*result)
+			_, err := c.TgBotClient.AnswerInlineQuery(*result)
+			if err != nil {
+				_logger.WithError(err).Error("answer share queue inline query failed")
+			}
 		}
 	}
 }

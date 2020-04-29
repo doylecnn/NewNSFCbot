@@ -8,24 +8,25 @@ import (
 	"google.golang.org/api/iterator"
 )
 
-type persion struct {
+type guest struct {
 	UID  int64  `firestore:"UID"`
 	Name string `firestore:"Name"`
 }
 
 // OnboardQueue 登岛队列
 type OnboardQueue struct {
-	ID             string    `firestore:"-"`
-	Name           string    `firestore:"Name"`
-	OwnerID        int64     `firestore:"OwnerID"`
-	Owner          string    `firestore:"Owner"`
-	IslandInfo     string    `firestore:"IslandInfo"`
-	CurrentOnBoard string    `firestore:"CurrentOnBoard"`
-	MaxGuestCount  int       `firestore:"MaxGuestCount"`
-	Password       string    `firestore:"Password"`
-	Queue          []persion `firestore:"queue"`
-	UIDs           []int64   `firestore:"uids"` //private chat id
-	Dismissed      bool      `firestore:"Dismissed"`
+	ID            string  `firestore:"-"`
+	IsAuto        bool    `firestore:"IsAuto"`
+	Name          string  `firestore:"Name"`
+	OwnerID       int64   `firestore:"OwnerID"`
+	Owner         string  `firestore:"Owner"`
+	IslandInfo    string  `firestore:"IslandInfo"`
+	MaxGuestCount int     `firestore:"MaxGuestCount"`
+	Password      string  `firestore:"Password"`
+	Queue         []guest `firestore:"queue"`
+	UIDs          []int64 `firestore:"uids"`   //private chat id
+	Landed        []guest `firestore:"landed"` //landed
+	Dismissed     bool    `firestore:"Dismissed"`
 }
 
 // GetJoinedQueue return joined onboard queue
@@ -34,6 +35,7 @@ func GetJoinedQueue(ctx context.Context, uid int64) (queue []*OnboardQueue, err 
 	if err != nil {
 		return
 	}
+	defer client.Close()
 	iter := client.Collection("onboardQueues").Where("uids", "array-contains", uid).Documents(ctx)
 	for {
 		doc, err := iter.Next()
@@ -93,14 +95,22 @@ func (q *OnboardQueue) Len() int {
 	if q == nil {
 		return 0
 	}
-	return len(q.UIDs)
+	return len(q.Queue)
+}
+
+// LandedLen return length of Landed
+func (q *OnboardQueue) LandedLen() int {
+	if q == nil {
+		return 0
+	}
+	return len(q.Landed)
 }
 
 // GetPosition GetPosition
 func (q *OnboardQueue) GetPosition(uid int64) (int, error) {
 	for i, id := range q.UIDs {
 		if uid == id {
-			return i, nil
+			return i + 1, nil
 		}
 	}
 	return -1, errors.New("NotFound")
@@ -120,7 +130,7 @@ func (q *OnboardQueue) Append(ctx context.Context, client *firestore.Client, uid
 		}
 	}
 	co := client.Doc("onboardQueues/" + q.ID)
-	var p = persion{UID: uid, Name: username}
+	var p = guest{UID: uid, Name: username}
 	_, err = co.Update(ctx, []firestore.Update{
 		{Path: "queue", Value: firestore.ArrayUnion(p)},
 		{Path: "uids", Value: firestore.ArrayUnion(uid)},
@@ -142,7 +152,7 @@ func (q *OnboardQueue) Remove(ctx context.Context, client *firestore.Client, uid
 		return errors.New("queue has been dismissed")
 	}
 	var exists = false
-	var deleteItem persion
+	var deleteItem guest
 	for _, p := range q.Queue {
 		if p.UID == uid {
 			deleteItem = p
@@ -151,15 +161,37 @@ func (q *OnboardQueue) Remove(ctx context.Context, client *firestore.Client, uid
 		}
 	}
 	if !exists {
+		for _, p := range q.Landed {
+			if p.UID == uid {
+				deleteItem = p
+				exists = true
+				break
+			}
+		}
+	}
+	if !exists {
 		return errors.New("not join in this queue")
 	}
 	co := client.Doc("onboardQueues/" + q.ID)
 	_, err = co.Update(ctx, []firestore.Update{
 		{Path: "queue", Value: firestore.ArrayRemove(deleteItem)},
-		{Path: "uids", Value: firestore.ArrayUnion(uid)},
+		{Path: "uids", Value: firestore.ArrayRemove(uid)},
+		{Path: "landed", Value: firestore.ArrayRemove(deleteItem)},
 	})
 	if err != nil {
 		return
+	}
+	if len(q.Queue) > 1 {
+		copy(q.Queue[0:], q.Queue[1:])
+		q.Queue = q.Queue[:len(q.Queue)-1]
+	} else {
+		q.Queue = []guest{}
+	}
+	if len(q.Landed) > 1 {
+		copy(q.Landed[0:], q.Landed[1:])
+		q.Landed = q.Landed[:len(q.Landed)-1]
+	} else {
+		q.Landed = []guest{}
 	}
 	return
 }
@@ -175,18 +207,20 @@ func (q *OnboardQueue) Next(ctx context.Context, client *firestore.Client) (chat
 		return
 	}
 
-	p := q.Queue[0]
-	chatID = p.UID
+	g := q.Queue[0]
+	chatID = g.UID
 
 	co := client.Doc("onboardQueues/" + q.ID)
 	_, err = co.Update(ctx, []firestore.Update{
-		{Path: "queue", Value: firestore.ArrayRemove(p)},
-		{Path: "uids", Value: firestore.ArrayRemove(p.UID)},
+		{Path: "queue", Value: firestore.ArrayRemove(g)},
+		{Path: "uids", Value: firestore.ArrayRemove(g.UID)},
+		{Path: "landed", Value: firestore.ArrayUnion(g)},
 	})
 	if err != nil {
 		return
 	}
 
+	q.Landed = append(q.Landed, g)
 	copy(q.Queue[0:], q.Queue[1:])
 	q.Queue = q.Queue[:len(q.Queue)-1]
 
