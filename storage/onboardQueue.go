@@ -129,6 +129,11 @@ func (q *OnboardQueue) Append(ctx context.Context, client *firestore.Client, uid
 			return errors.New("already in this queue")
 		}
 	}
+	for _, p := range q.Landed {
+		if p.UID == uid {
+			return errors.New("already land island")
+		}
+	}
 	co := client.Doc("onboardQueues/" + q.ID)
 	var p = guest{UID: uid, Name: username}
 	_, err = co.Update(ctx, []firestore.Update{

@@ -205,6 +205,7 @@ func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 			ReplyText: "更新队列密码时出错了",
 		}
 	}
+	notifyNewPassword(queue)
 	var shareBtn = tgbotapi.NewInlineKeyboardButtonSwitch("分享队列："+island.Name, "/share_"+queue.ID)
 	var dismissBtn = tgbotapi.NewInlineKeyboardButtonData("解散队列", "/dismiss_"+queue.ID)
 	var listBtn = tgbotapi.NewInlineKeyboardButtonData("查看队列", "/showqueuemember_"+queue.ID)
@@ -226,6 +227,30 @@ func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 			ParseMode: "MarkdownV2",
 		}},
 		nil
+}
+
+// notifyNewPassword to current landed user when password is update
+func notifyNewPassword(queue *storage.OnboardQueue) {
+	updatePasswordText := fmt.Sprintf("岛主更新了密码，新密码如下：\n%s", queue.Password)
+	for _, p := range queue.Landed {
+		_, err := tgbot.Send(&tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:      int64(p.UID),
+				ReplyMarkup: tgbotapi.ForceReply{ForceReply: true, Selective: true},
+			},
+			Text: updatePasswordText,
+		})
+		if err != nil {
+			_logger.WithError(err).Error("send new password failed")
+			tgbot.Send(&tgbotapi.MessageConfig{
+				BaseChat: tgbotapi.BaseChat{
+					ChatID:      int64(queue.OwnerID),
+					ReplyMarkup: tgbotapi.ForceReply{ForceReply: true, Selective: true},
+				},
+				Text: fmt.Sprintf("通知新的密码给 %s 时，发生错误，请私聊给它新的密码", p.Name),
+			})
+		}
+	}
 }
 
 func cmdJoinedQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {

@@ -373,13 +373,22 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 			ShowAlert:       false,
 		}, nil
 	}
-	if queue.MaxGuestCount > 0 && queue.LandedLen() == queue.MaxGuestCount {
-		_logger.WithError(err).Error("island is full")
-		return tgbotapi.CallbackConfig{
-			CallbackQueryID: query.ID,
-			Text:            "已达到同时登岛人数上限",
-			ShowAlert:       false,
-		}, nil
+	if queue.MaxGuestCount > 0 {
+		if queue.LandedLen() == queue.MaxGuestCount {
+			_logger.WithError(err).Error("island is full")
+			tgbot.AnswerCallbackQuery(tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "请注意，已达同时登岛人数上限",
+				ShowAlert:       false,
+			})
+		} else if queue.LandedLen() > queue.MaxGuestCount {
+			_logger.WithError(err).Error("island is full")
+			tgbot.AnswerCallbackQuery(tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "请注意，已超过同时登岛人数上限",
+				ShowAlert:       false,
+			})
+		}
 	}
 	if err = sendNotify(ctx, client, queue); err != nil {
 		if err.Error() == "queue is empty" {
@@ -468,12 +477,17 @@ func sendNotify(ctx context.Context, client *firestore.Client, queue *storage.On
 		var sorryBtn = tgbotapi.NewInlineKeyboardButtonData("抱歉不能来了……", "/sorry_"+queue.ID)
 		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(sorryBtn))
+		uid := queue.Queue[i].UID
+		l, err := queue.GetPosition(uid)
+		if err != nil {
+			logrus.WithError(err).WithField("uid", uid).Error("get postion failed")
+		}
 		_, err = tgbot.Send(&tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
-				ChatID:      queue.Queue[i].UID,
+				ChatID:      uid,
 				ReplyMarkup: replyMarkup,
 			},
-			Text:      fmt.Sprintf("岛屿：%s\n\n马上就要轮到你了！请做好准备并确认：网络没问题，行李已带齐，前往机场开始与工作鸟员对话，使用密码搜索岛屿。\n如果不能前往，请务必和岛主联系！", markdownSafe(queue.IslandInfo)),
+			Text:      fmt.Sprintf("提醒！\n岛屿：%s\n\n*马上就要轮到你了！\n请做好准备并确认：网络没问题，行李已带齐，前往机场开始与工作鸟员对话，准备使用密码搜索岛屿，停在密码输入界面等待。*\n如果不能前往，请务必和岛主联系！\n当前位置：%d/%d", markdownSafe(queue.IslandInfo), l, queue.Len()),
 			ParseMode: "MarkdownV2",
 		})
 	}
@@ -592,6 +606,12 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 			return tgbotapi.CallbackConfig{
 				CallbackQueryID: query.ID,
 				Text:            "您已经加入了这个队列",
+				ShowAlert:       false,
+			}, nil
+		} else if err.Error() == "already land island" {
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "请离岛后再重新排队",
 				ShowAlert:       false,
 			}, nil
 		}
@@ -893,10 +913,13 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 		sendNotify(ctx, client, queue)
 	}
 
+	var joinBtn = tgbotapi.NewInlineKeyboardButtonData("再排一次：", "/join_"+queueID)
+	var replyMarkupToQueueMember = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(joinBtn))
 	_, err = tgbot.Send(&tgbotapi.EditMessageTextConfig{
 		BaseEdit: tgbotapi.BaseEdit{
-			ChatID:    query.Message.Chat.ID,
-			MessageID: query.Message.MessageID,
+			ChatID:      query.Message.Chat.ID,
+			MessageID:   query.Message.MessageID,
+			ReplyMarkup: &replyMarkupToQueueMember,
 		},
 		Text: "感谢本次使用",
 	})
