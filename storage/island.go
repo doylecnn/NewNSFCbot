@@ -60,7 +60,7 @@ type Island struct {
 
 // GetAnimalCrossingIslandByUserID get island by user id
 func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Island, residentUID int, err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
+	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
 	}
@@ -69,7 +69,7 @@ func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Isla
 	dsnap, err := client.Doc(islandDocPath).Get(ctx)
 	if err != nil {
 		if status.Code(err) != codes.NotFound {
-			Logger.WithError(err).WithField("uid", uid).Error("failed when get island")
+			logger.Error().Err(err).Int("uid", uid).Msg("failed when get island")
 			return nil, 0, err
 		}
 	}
@@ -83,7 +83,7 @@ func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Isla
 		dsnap, err = client.Doc(islandDocPath).Get(ctx)
 		if err != nil {
 			if status.Code(err) != codes.NotFound {
-				Logger.WithError(err).WithField("uid", island.ResidentUID).Error("failed when get island by ResidentUID")
+				logger.Error().Err(err).Int("uid", island.ResidentUID).Msg("failed when get island by ResidentUID")
 				return nil, 0, err
 			}
 		}
@@ -110,7 +110,7 @@ func GetAnimalCrossingIslandByUserID(ctx context.Context, uid int) (island *Isla
 
 // Update island info
 func (i Island) Update(ctx context.Context) (err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
+	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
 	}
@@ -121,7 +121,7 @@ func (i Island) Update(ctx context.Context) (err error) {
 
 // Close island
 func (i *Island) Close(ctx context.Context) (err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
+	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
 	}
@@ -139,7 +139,7 @@ func (i *Island) Close(ctx context.Context) (err error) {
 
 // CreateOnboardQueue create onboard island queue
 func (i *Island) CreateOnboardQueue(ctx context.Context, uid int64, owner, password string, maxGuestCount int) (queue *OnboardQueue, err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
+	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
 	}
@@ -160,7 +160,7 @@ func (i *Island) CreateOnboardQueue(ctx context.Context, uid int64, owner, passw
 		}, firestore.MergeAll)
 	})
 	if err != nil {
-		Logger.WithError(err).Info("An error has occurred when CreateOnboardQueue")
+		logger.Info().Err(err).Msg("An error has occurred when CreateOnboardQueue")
 	}
 	return
 }
@@ -170,7 +170,7 @@ func (i *Island) GetOnboardQueue(ctx context.Context) (queue *OnboardQueue, err 
 	if len(i.OnBoardQueueID) == 0 {
 		return nil, errors.New("NotFound")
 	}
-	client, err := firestore.NewClient(ctx, ProjectID)
+	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
 	}
@@ -180,7 +180,7 @@ func (i *Island) GetOnboardQueue(ctx context.Context) (queue *OnboardQueue, err 
 
 // ClearOldOnboardQueue clean old onboard island queue
 func (i *Island) ClearOldOnboardQueue(ctx context.Context) (queue *OnboardQueue, err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
+	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
 	}
@@ -217,7 +217,7 @@ func (i *Island) ClearOldOnboardQueue(ctx context.Context) (queue *OnboardQueue,
 		return err
 	})
 	if err != nil {
-		Logger.WithError(err).Info("An error has occurred when ClearOldOnboardQueue")
+		logger.Info().Err(err).Msg("An error has occurred when ClearOldOnboardQueue")
 	}
 	return
 }
@@ -237,7 +237,7 @@ func (i Island) ShortInfo() string {
 	if len(i.BaseInfo) == 0 {
 		i.BaseInfo = strings.Join(i.Fruits, ", ")
 		if err := i.Update(context.Background()); err != nil {
-			Logger.WithError(err).Error()
+			logger.Error().Err(err).Send()
 		}
 	}
 	var text string = fmt.Sprintf("位于%s半球%s时区的岛屿：%s, 岛民代表：%s。 %s\n基本信息：%s\n\n", hemisphere, i.Timezone.String(), i.Name, i.Owner, airportstatus, i.BaseInfo)
@@ -268,7 +268,7 @@ func (i Island) String() string {
 	if len(i.BaseInfo) == 0 {
 		i.BaseInfo = strings.Join(i.Fruits, ", ")
 		if err := i.Update(context.Background()); err != nil {
-			Logger.WithError(err).Error()
+			logger.Error().Err(err).Send()
 		}
 	}
 	var text string = fmt.Sprintf("位于%s半球%s时区的岛屿：%s, 岛民代表：%s。 %s\n基本信息：%s\n\n", hemisphere, i.Timezone.String(), i.Name, i.Owner, airportstatus, i.BaseInfo)
@@ -293,7 +293,7 @@ type PriceHistory struct {
 
 // Set price history
 func (p PriceHistory) Set(ctx context.Context, uid int) (err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
+	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
 	}
@@ -308,7 +308,7 @@ func (p PriceHistory) Set(ctx context.Context, uid int) (err error) {
 
 // Update price history
 func (p PriceHistory) Update(ctx context.Context) (err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
+	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
 	}
@@ -320,7 +320,7 @@ func (p PriceHistory) Update(ctx context.Context) (err error) {
 
 // Delete price history
 func (p PriceHistory) Delete(ctx context.Context) (err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
+	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
 	}
@@ -342,7 +342,7 @@ func (p PriceHistory) LocationDateTime() (datetime time.Time) {
 func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 	island, residentUID, err := GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
-		Logger.WithError(err).Error("GetAnimalCrossingIslandByUserID")
+		logger.Error().Err(err).Msg("GetAnimalCrossingIslandByUserID")
 		return
 	}
 	if residentUID > 0 {
@@ -351,7 +351,7 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 	lp, err := GetLastPriceHistory(ctx, uid, island.LastPrice.Date)
 	if err != nil {
 		if err.Error() != "NotFound" && status.Code(err) != codes.NotFound {
-			Logger.WithError(err).Error("GetLastPriceHistory")
+			logger.Error().Err(err).Msg("GetLastPriceHistory")
 			return
 		}
 	}
@@ -370,7 +370,7 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 	priceHistory := PriceHistory{Date: now, Price: price, Timezone: island.Timezone}
 	island.LastPrice = priceHistory
 	if err = island.Update(ctx); err != nil {
-		Logger.WithError(err).Error("update island last price")
+		logger.Error().Err(err).Msg("update island last price")
 		return
 	}
 	if lp != nil {
@@ -382,7 +382,7 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 					(lpd.Hour() >= 8 && lpd.Hour() < 12 && pd.Hour() == 8) ||
 					(lpd.Hour() >= 12 && lpd.Hour() < 8 && pd.Hour() == 12))) {
 			if err = lp.Delete(ctx); err != nil {
-				Logger.WithError(err).Error("Delete old price")
+				logger.Error().Err(err).Msg("Delete old price")
 				return
 			}
 		}
@@ -392,7 +392,7 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 
 // GetLastPriceHistory get price history
 func GetLastPriceHistory(ctx context.Context, uid int, lasttime time.Time) (priceHistory *PriceHistory, err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
+	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -427,7 +427,7 @@ func GetLastPriceHistory(ctx context.Context, uid int, lasttime time.Time) (pric
 
 // GetPriceHistory get price history
 func GetPriceHistory(ctx context.Context, uid int) (priceHistory []*PriceHistory, err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
+	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -454,7 +454,7 @@ func getPriceHistory(ctx context.Context, client *firestore.Client, uid int, pat
 		}
 		var price *PriceHistory = &PriceHistory{}
 		if err = doc.DataTo(price); err != nil {
-			Logger.Warn(err)
+			logger.Warn().Err(err).Send()
 			return nil, err
 		}
 		price.Path = fmt.Sprintf("users/%d/games/animal_crossing/price_history/%d", uid, price.Date.Unix())
@@ -465,7 +465,7 @@ func getPriceHistory(ctx context.Context, client *firestore.Client, uid int, pat
 
 // GetWeeklyDTCPriceHistory 获得当前周自周日起的价格。周日是买入价
 func GetWeeklyDTCPriceHistory(ctx context.Context, uid int, startDate, endDate time.Time) (priceHistory []*PriceHistory, err error) {
-	client, err := firestore.NewClient(ctx, ProjectID)
+	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -482,7 +482,7 @@ func GetWeeklyDTCPriceHistory(ctx context.Context, uid int, startDate, endDate t
 		}
 		var price *PriceHistory = &PriceHistory{}
 		if err = doc.DataTo(price); err != nil {
-			Logger.Warn(err)
+			logger.Warn().Err(err).Send()
 			return nil, err
 		}
 		price.Path = fmt.Sprintf("users/%d/games/animal_crossing/price_history/%d", uid, price.Date.Unix())

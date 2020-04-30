@@ -55,7 +55,7 @@ func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 				ReplyText: "您还没有登记您的岛屿，请用/addisland 添加您的岛屿信息",
 			}
 		}
-		_logger.WithError(err).Error("cmdMyQueue GetAnimalCrossingIslandByUserID")
+		_logger.Error().Err(err).Msg("cmdMyQueue GetAnimalCrossingIslandByUserID")
 		return nil, Error{InnerError: err,
 			ReplyText: "查询岛屿时出错了。",
 		}
@@ -78,7 +78,7 @@ func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 				Text: "您没有开启队列",
 			}}, nil
 		}
-		_logger.WithError(err).Error("cmdMyQueue GetOnboardQueue")
+		_logger.Error().Err(err).Msg("cmdMyQueue GetOnboardQueue")
 		return nil, Error{InnerError: err,
 			ReplyText: "查询队列时出错了",
 		}
@@ -86,7 +86,7 @@ func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 	if queue.Dismissed {
 		client, err := firestore.NewClient(ctx, _projectID)
 		if err != nil {
-			_logger.WithError(err).Error("cmdMyQueue newClient")
+			_logger.Error().Err(err).Msg("cmdMyQueue newClient")
 			return nil, Error{InnerError: err,
 				ReplyText: "查询队列时出错了",
 			}
@@ -153,7 +153,7 @@ func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 				ReplyText: "您还没有登记您的岛屿，请用/addisland 添加您的岛屿信息",
 			}
 		}
-		_logger.WithError(err).Error("cmdMyQueue GetAnimalCrossingIslandByUserID")
+		_logger.Error().Err(err).Msg("cmdMyQueue GetAnimalCrossingIslandByUserID")
 		return nil, Error{InnerError: err,
 			ReplyText: "查询岛屿时出错了。",
 		}
@@ -176,14 +176,14 @@ func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 				Text: "您没有开启队列",
 			}}, nil
 		}
-		_logger.WithError(err).Error("cmdMyQueue GetOnboardQueue")
+		_logger.Error().Err(err).Msg("cmdMyQueue GetOnboardQueue")
 		return nil, Error{InnerError: err,
 			ReplyText: "查询队列时出错了",
 		}
 	}
 	client, err := firestore.NewClient(ctx, _projectID)
 	if err != nil {
-		_logger.WithError(err).Error("cmdMyQueue newClient")
+		_logger.Error().Err(err).Msg("cmdMyQueue newClient")
 		return nil, Error{InnerError: err,
 			ReplyText: "查询队列时出错了",
 		}
@@ -241,7 +241,7 @@ func notifyNewPassword(queue *storage.OnboardQueue) {
 			Text: updatePasswordText,
 		})
 		if err != nil {
-			_logger.WithError(err).Error("send new password failed")
+			_logger.Error().Err(err).Msg("send new password failed")
 			tgbot.Send(&tgbotapi.MessageConfig{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:      int64(queue.OwnerID),
@@ -261,13 +261,13 @@ func cmdJoinedQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	uid := int64(message.From.ID)
 	queues, err := storage.GetJoinedQueue(ctx, uid)
 	if err != nil {
-		_logger.WithError(err).Error("cmdMyQueue newClient")
+		_logger.Error().Err(err).Msg("cmdMyQueue newClient")
 		return nil, Error{InnerError: err,
 			ReplyText: "查询队列时出错了",
 		}
 	}
 	if queues == nil || len(queues) == 0 {
-		_logger.WithError(err).Error("cmdMyQueue newClient")
+		_logger.Error().Err(err).Msg("cmdMyQueue newClient")
 		return nil, Error{InnerError: err,
 			ReplyText: "您没有加入任何队列",
 		}
@@ -365,7 +365,7 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 	}
 	queue, err := island.CreateOnboardQueue(ctx, int64(uid), owner, password, maxGuestCount)
 	if err != nil {
-		_logger.WithError(err).Error("创建队列时出错")
+		_logger.Error().Err(err).Msg("创建队列时出错")
 		return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,

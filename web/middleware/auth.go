@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
+	"github.com/rs/zerolog"
 )
 
-var _logger *logrus.Logger
+var _logger zerolog.Logger
 
 //TelegramAuth 使用telegram 来登录
-func TelegramAuth(secretKey [32]byte, logger *logrus.Logger) gin.HandlerFunc {
+func TelegramAuth(secretKey [32]byte, logger zerolog.Logger) gin.HandlerFunc {
 	_logger = logger
 	return func(c *gin.Context) {
 		authData, err := c.Cookie("auth_data_str")
@@ -99,7 +99,7 @@ func TelegramAdminAuth(secretKey [32]byte, adminUID int) gin.HandlerFunc {
 				return
 			}
 		}
-		_logger.WithError(err).Error("auth failed")
+		_logger.Error().Err(err).Msg("auth failed")
 		redirectToLogin(c, "auth failed")
 		return
 	}

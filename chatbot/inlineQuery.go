@@ -14,23 +14,23 @@ import (
 func (c ChatBot) HandleInlineQuery(inlineQuery *tgbotapi.InlineQuery) {
 	if inlineQuery.Query == "myfc" {
 		if result, err := inlineQueryMyFC(inlineQuery); err != nil {
-			_logger.Warn(err)
+			_logger.Warn().Err(err).Send()
 		} else {
 			c.TgBotClient.AnswerInlineQuery(*result)
 		}
 	} else if inlineQuery.Query == "myisland" {
 		if result, err := inlineQueryMyIsland(inlineQuery); err != nil {
-			_logger.Warn(err)
+			_logger.Warn().Err(err).Send()
 		} else {
 			c.TgBotClient.AnswerInlineQuery(*result)
 		}
 	} else if strings.HasPrefix(inlineQuery.Query, "/share_") {
 		if result, err := inlineQueryShareQueue(inlineQuery); err != nil {
-			_logger.Warn(err)
+			_logger.Warn().Err(err).Send()
 		} else {
 			_, err := c.TgBotClient.AnswerInlineQuery(*result)
 			if err != nil {
-				_logger.WithError(err).Error("answer share queue inline query failed")
+				_logger.Error().Err(err).Msg("answer share queue inline query failed")
 			}
 		}
 	}

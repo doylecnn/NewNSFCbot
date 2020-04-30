@@ -22,19 +22,19 @@ func (w Web) Islands(c *gin.Context) {
 			authData, _ := c.Cookie("auth_data_str")
 			userID, err := middleware.GetAuthDataInfo(authData, "id")
 			if err != nil {
-				_logger.WithError(err).Warning("get auth data info")
+				_logger.Warn().Err(err).Msg("get auth data info")
 				c.AbortWithError(http.StatusInternalServerError, err)
 				return
 			}
 			uid, err := strconv.ParseInt(userID, 10, 64)
 			if err != nil {
-				_logger.WithError(err).Warning("parse int")
+				_logger.Warn().Err(err).Msg("parse int")
 				c.AbortWithError(http.StatusInternalServerError, err)
 				return
 			}
 			u, err := storage.GetUser(ctx, int(uid), 0)
 			if err != nil {
-				_logger.WithError(err).Warning("get user")
+				_logger.Warn().Err(err).Msg("get user")
 				c.AbortWithError(http.StatusInternalServerError, err)
 				return
 			}
@@ -42,11 +42,11 @@ func (w Web) Islands(c *gin.Context) {
 			for _, gid := range u.GroupIDs {
 				us, err := storage.GetGroupUsers(ctx, gid)
 				if err != nil {
-					_logger.WithError(err).Warning("get group users")
+					_logger.Warn().Err(err).Msg("get group users")
 					c.AbortWithError(http.StatusInternalServerError, err)
 					return
 				} else if len(us) == 0 {
-					_logger.WithError(err).Warning("no users in group")
+					_logger.Warn().Err(err).Msg("no users in group")
 					c.AbortWithError(http.StatusInternalServerError, errors.New("not found user by groupid"))
 					return
 				}

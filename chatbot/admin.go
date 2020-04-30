@@ -10,7 +10,6 @@ import (
 
 	"cloud.google.com/go/firestore"
 	"github.com/doylecnn/new-nsfc-bot/storage"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -31,11 +30,11 @@ func cmdImportData(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 		tgidstr, fcstr, name := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), strings.TrimSpace(parts[2])
 		tgid, err := strconv.ParseInt(tgidstr, 10, 64)
 		if err != nil {
-			_logger.Warnf("user name:%s, id:%s, err:%v", name, tgidstr, err)
+			_logger.Warn().Err(err).Str("user", name).Int64("uid", tgid).Send()
 		}
 		fc, err := strconv.ParseInt(fcstr, 10, 64)
 		if err != nil {
-			_logger.Warnf("user name:%s, id:%s, fc:%s, err:%v", name, tgidstr, fcstr, err)
+			_logger.Warn().Err(err).Str("user", name).Int64("id", tgid).Str("FC", fcstr).Send()
 		}
 		u := storage.User{ID: int(tgid), Name: name, NSAccounts: []storage.NSAccount{{Name: name, FC: storage.FriendCode(fc)}}}
 		_, err = storage.GetUser(ctx, u.ID, 0)
@@ -78,7 +77,7 @@ func cmdUpgradeData(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	for _, u := range users {
 		_, _, err := u.GetAnimalCrossingIsland(ctx)
 		if err != nil {
-			_logger.WithError(err).Error("GetAnimalCrossingIsland")
+			_logger.Error().Err(err).Msg("GetAnimalCrossingIsland")
 			continue
 		}
 	}
@@ -150,7 +149,7 @@ func cmdToggleDebugMode(message *tgbotapi.Message) (replyMessages []*tgbotapi.Me
 
 func (c ChatBot) cmdClearMessages(message *tgbotapi.Message) (replyMessages []*tgbotapi.MessageConfig, err error) {
 	if len(sentMsgs) > 0 {
-		c.Logger.WithField("sentMsgs len:", len(sentMsgs))
+		c.logger.Info().Int("sentMsgs len:", len(sentMsgs)).Send()
 		sort.Slice(sentMsgs, func(i, j int) bool {
 			return sentMsgs[i].Time.After(sentMsgs[j].Time)
 		})
@@ -171,10 +170,9 @@ func (c ChatBot) cmdClearMessages(message *tgbotapi.Message) (replyMessages []*t
 		sentMsgs = sentMsgs[0:0]
 	}
 	cacheForEdit.Purge()
-	c.Logger.WithFields(logrus.Fields{
-		"sentMsgs len":     len(sentMsgs),
-		"cacheForEdit len": cacheForEdit.Len(),
-	}).Info("clear")
+	c.logger.Info().Int("sentMsgs len", len(sentMsgs)).
+		Int("cacheForEdit len", cacheForEdit.Len()).
+		Msg("clear")
 	replyMessages = append(replyMessages, &tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:              message.Chat.ID,

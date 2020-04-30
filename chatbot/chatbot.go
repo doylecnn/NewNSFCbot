@@ -10,10 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/doylecnn/new-nsfc-bot/stackdriverhook"
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	lru "github.com/hashicorp/golang-lru"
-	"github.com/sirupsen/logrus"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -25,7 +27,7 @@ var (
 	_domain      string
 	cacheForEdit *lru.Cache
 	sentMsgs     []sentMessage
-	_logger      *logrus.Logger
+	_logger      zerolog.Logger
 )
 
 type sentMessage struct {
@@ -36,20 +38,29 @@ type sentMessage struct {
 
 // ChatBot is chat bot
 type ChatBot struct {
-	Logger      *logrus.Logger
+	logwriter   *stackdriverhook.StackdriverLoggingWriter
+	logger      zerolog.Logger
 	TgBotClient *tgbotapi.BotAPI
-	Route       Router
-	ProjectID   string
+	route       Router
+	projectID   string
 	appID       string
 	token       string
 }
 
 // NewChatBot return new chat bot
-func NewChatBot(token, domain, appID, projectID, port string, adminID int, logger *logrus.Logger) ChatBot {
-	_logger = logger
+func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatBot {
+	var logger zerolog.Logger
+	sw, err := stackdriverhook.NewStackdriverLoggingWriter(projectID, "nsfcbot", map[string]string{"from": "telegrambot"})
+	if err != nil {
+		logger = log.Logger
+		logger.Error().Err(err).Msg("new NewStackdriverLoggingWriter failed")
+	} else {
+		logger = zerolog.New(sw)
+		_logger = logger
+	}
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
-		_logger.Fatalln(err)
+		logger.Fatal().Err(err).Send()
 	}
 
 	tgbot = bot
@@ -86,20 +97,30 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int, logge
 			})
 	}
 	if cmds, err := getMyCommands(); err != nil {
-		_logger.WithError(err).Error("getMyCommands")
+		logger.Error().Err(err).Msg("getMyCommands")
 	} else if err == nil && len(cmds) != len(botCommands) {
 		if resp, err := setMyCommands(botCommands); err != nil {
-			_logger.WithError(err).Warn("setMyCommands")
+			logger.Error().Err(err).Msg("setMyCommands")
 		} else {
-			_logger.WithFields(logrus.Fields{"result": resp.Result}).Info("setMyCommands")
+			logger.Info().
+				Int("errorcode", resp.ErrorCode).
+				Str("description", resp.Description).
+				RawJSON("result", resp.Result).
+				Bool("ok", resp.Ok).
+				Msg("setMyCommands")
 		}
 	} else if err == nil && len(cmds) == len(botCommands) {
 		for i := 0; i < len(cmds); i++ {
 			if cmds[i].Command != botCommands[i].Command || cmds[i].Description != botCommands[i].Description {
 				if resp, err := setMyCommands(botCommands); err != nil {
-					_logger.WithError(err).Warn("setMyCommands")
+					_logger.Error().Err(err).Msg("setMyCommands")
 				} else {
-					_logger.WithFields(logrus.Fields{"result": resp.Result}).Info("setMyCommands")
+					logger.Info().
+						Int("errorcode", resp.ErrorCode).
+						Str("description", resp.Description).
+						RawJSON("result", resp.Result).
+						Bool("ok", resp.Ok).
+						Msg("setMyCommands")
 				}
 				break
 			}
@@ -110,7 +131,7 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int, logge
 	botAdminID = adminID
 	_projectID = projectID
 	_domain = domain
-	c := ChatBot{TgBotClient: bot, Route: router, ProjectID: projectID, appID: appID, token: token, Logger: logger}
+	c := ChatBot{TgBotClient: bot, route: router, projectID: projectID, appID: appID, token: token, logger: logger, logwriter: sw}
 
 	router.HandleFunc("help", func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 		return []*tgbotapi.MessageConfig{{
@@ -166,17 +187,22 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int, logge
 	router.HandleFunc("debug", cmdToggleDebugMode)
 	router.HandleFunc("clear", c.cmdClearMessages)
 
-	_logger.WithFields(logrus.Fields{"bot username": bot.Self.UserName,
-		"bot id": bot.Self.ID}).Infof("Authorized on account %s, ID: %d", bot.Self.UserName, bot.Self.ID)
+	logger.Info().Str("bot username", bot.Self.UserName).
+		Int("bot id", bot.Self.ID).Msg("authorized success")
 
 	if err = c.SetWebhook(); err != nil {
-		_logger.WithError(err).Error("SetWebhook failed")
+		logger.Error().Err(err).Msg("SetWebhook failed")
 	}
 	if cacheForEdit, err = lru.New(17); err != nil {
-		_logger.WithError(err).Error("new lru cache failed")
+		logger.Error().Err(err).Msg("new lru cache failed")
 	}
 
 	return c
+}
+
+// Close close bot
+func (c ChatBot) Close() {
+	c.logwriter.Close()
 }
 
 // SetWebhook set webhook
@@ -186,7 +212,7 @@ func (c ChatBot) SetWebhook() (err error) {
 		return
 	}
 	if info.LastErrorDate != 0 {
-		c.Logger.WithField("last error message", info.LastErrorMessage).Info("Telegram callback failed")
+		c.logger.Info().Str("last error message", info.LastErrorMessage).Msg("Telegram callback failed")
 	}
 	if !info.IsSet() {
 		var webhookConfig WebhookConfig
@@ -197,20 +223,20 @@ func (c ChatBot) SetWebhook() (err error) {
 		var apiResp tgbotapi.APIResponse
 		apiResp, err = c.setWebhook(webhookConfig)
 		if err != nil {
-			c.Logger.WithError(err).Error("SetWebhook failed")
+			c.logger.Error().Err(err).Msg("SetWebhook failed")
 			return
 		}
-		fields := logrus.Fields{
-			"desc":      apiResp.Description,
-			"errorCode": apiResp.ErrorCode,
-			"OK":        apiResp.Ok,
-			"result":    apiResp.Result,
-		}
+		info := c.logger.Info().Int("errorcode", apiResp.ErrorCode).
+			Str("description", apiResp.Description).
+			Bool("ok", apiResp.Ok).
+			RawJSON("result", apiResp.Result)
 		if apiResp.Parameters != nil {
-			fields["MigrateToChatID"] = apiResp.Parameters.MigrateToChatID
-			fields["RetryAfter"] = apiResp.Parameters.RetryAfter
+			info.Dict("parameters", zerolog.Dict().
+				Int64("migrateToChatID", apiResp.Parameters.MigrateToChatID).
+				Int("retryAfter", apiResp.Parameters.RetryAfter),
+			)
 		}
-		c.Logger.WithFields(fields).Info("set webhook success")
+		info.Msg("set webhook success")
 	}
 	return
 }
@@ -241,12 +267,12 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 		} else if message != nil && message.Chat.IsPrivate() && !message.IsCommand() && message.ReplyToMessage != nil && message.ReplyToMessage.Text == "请输入新的密码" && message.ReplyToMessage.From.IsBot {
 			replies, e := cmdUpdatePassword(message)
 			if e != nil {
-				c.Logger.WithError(e).Error("cmdUpdatePassword")
+				c.logger.Error().Err(e).Msg("cmdUpdatePassword")
 			}
 			for _, reply := range replies {
 				_, e := c.TgBotClient.Send(reply)
 				if e != nil {
-					c.Logger.WithError(e).Error("cmdUpdatePassword send message")
+					c.logger.Error().Err(e).Msg("cmdUpdatePassword send message")
 				}
 			}
 		} else if message != nil && message.IsCommand() {
@@ -265,50 +291,47 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 						}
 					}
 					if foundOutDateMsg {
-						c.Logger.WithField("sentMsgs len:", len(sentMsgs))
+						c.logger.Debug().Int("sentMsgs len:", len(sentMsgs)).Send()
 						for _, sentMsg := range sentMsgs[i:] {
 							c.TgBotClient.DeleteMessage(tgbotapi.NewDeleteMessage(sentMsg.ChatID, sentMsg.MsgID))
 						}
 						copy(sentMsgs, sentMsgs[i:])
 						sentMsgs = sentMsgs[:len(sentMsgs)-i]
-						c.Logger.WithField("sentMsgs len:", len(sentMsgs))
+						c.logger.Debug().Int("sentMsgs len:", len(sentMsgs)).Send()
 					}
 				}
 				messageSendTime := message.Time()
 				if !isEditedMessage && time.Since(messageSendTime).Seconds() > 60 {
-					c.Logger.WithFields(logrus.Fields{
-						"command":          message.Command(),
-						"args":             message.CommandArguments(),
-						"receive datetime": message.Time().Format(time.RFC1123Z),
-						"UID":              message.From.ID,
-						"ChatID":           message.Chat.ID,
-						"FromUser":         message.From.UserName,
-					}).Info("old message dropped")
+					c.logger.Info().Str("command", message.Command()).
+						Str("args", message.CommandArguments()).
+						Time("receive datetime", message.Time()).
+						Int("UID", message.From.ID).
+						Int64("ChatID", message.Chat.ID).
+						Str("FromUser", message.From.UserName).
+						Msg("old message dropped")
 
 					continue
 				}
 				if isEditedMessage {
 					if time.Since(messageSendTime).Minutes() > 2 {
-						c.Logger.WithFields(logrus.Fields{
-							"command":          message.Command(),
-							"args":             message.CommandArguments(),
-							"receive datetime": message.Time().Format(time.RFC1123Z),
-							"UID":              message.From.ID,
-							"ChatID":           message.Chat.ID,
-							"FromUser":         message.From.UserName,
-						}).Info("old message dropped")
+						c.logger.Info().Str("command", message.Command()).
+							Str("args", message.CommandArguments()).
+							Time("receive datetime", message.Time()).
+							Int("UID", message.From.ID).
+							Int64("ChatID", message.Chat.ID).
+							Str("FromUser", message.From.UserName).
+							Msg("old message dropped")
 						continue
 					}
 					var editTime = time.Unix(int64(message.EditDate), 0)
 					if time.Since(editTime).Seconds() > 60 {
-						c.Logger.WithFields(logrus.Fields{
-							"command":          message.Command(),
-							"args":             message.CommandArguments(),
-							"receive datetime": message.Time().Format(time.RFC1123Z),
-							"UID":              message.From.ID,
-							"ChatID":           message.Chat.ID,
-							"FromUser":         message.From.UserName,
-						}).Info("old message dropped")
+						c.logger.Info().Str("command", message.Command()).
+							Str("args", message.CommandArguments()).
+							Time("receive datetime", message.Time()).
+							Int("UID", message.From.ID).
+							Int64("ChatID", message.Chat.ID).
+							Str("FromUser", message.From.UserName).
+							Msg("old message dropped")
 						continue
 					}
 				}
@@ -316,7 +339,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				var canEditSentMsg = false
 				var canEditSentMsgID int
 				if isEditedMessage {
-					c.Logger.WithField("editedmessage", message.Text).Info("editedmessage received")
+					c.logger.Info().Str("editedmessage", message.Text).Msg("editedmessage received")
 					if cacheForEdit != nil {
 						if v, ok := cacheForEdit.Get(key); ok {
 							if ids, ok := v.([]int); ok {
@@ -334,11 +357,11 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 					}
 				}
 				c.TgBotClient.Send(tgbotapi.NewChatAction(message.Chat.ID, tgbotapi.ChatTyping))
-				replyMessages, err := c.Route.Run(message)
+				replyMessages, err := c.route.Run(message)
 				var sentMessageIDs []int
 				if err != nil {
 					if status.Code(err.InnerError) != codes.NotFound {
-						c.Logger.Warnf("%s", err.InnerError)
+						c.logger.Warn().Err(err.InnerError).Send()
 					}
 					if len(err.ReplyText) > 0 {
 						replyMessage := tgbotapi.MessageConfig{
@@ -348,7 +371,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 							Text: err.ReplyText}
 						sentM, err := c.TgBotClient.Send(replyMessage)
 						if err != nil {
-							c.Logger.WithError(err).WithField("message", replyMessage.Text).Error("send message failed")
+							c.logger.Error().Err(err).Str("message", replyMessage.Text).Msg("send message failed")
 						} else {
 							if cacheForEdit != nil {
 								sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
@@ -369,7 +392,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 								Text: replyMessages[0].Text}
 							_, err := c.TgBotClient.Send(fm)
 							if err != nil {
-								c.Logger.WithError(err).WithField("message", fm.Text).Error("send message failed")
+								c.logger.Error().Err(err).Str("message", fm.Text).Msg("send message failed")
 							}
 						}
 					} else {
@@ -391,7 +414,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 											Text: replyMessage.Text[offset : offset+remain]}
 										sentM, err := c.TgBotClient.Send(fm)
 										if err != nil {
-											c.Logger.WithError(err).WithField("message", fm.Text).Error("send message failed")
+											c.logger.Error().Err(err).Str("message", fm.Text).Msg("send message failed")
 										} else if replyMessage.ChatID == message.Chat.ID && !message.Chat.IsPrivate() {
 											if cacheForEdit != nil {
 												sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
@@ -404,7 +427,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 								} else {
 									sentM, err := c.TgBotClient.Send(*replyMessage)
 									if err != nil {
-										c.Logger.WithError(err).WithField("message", replyMessage.Text).Error("send message failed")
+										c.logger.Error().Err(err).Str("message", replyMessage.Text).Msg("send message failed")
 									} else if replyMessage.ChatID == message.Chat.ID && !message.Chat.IsPrivate() {
 										if cacheForEdit != nil {
 											sentMessageIDs = append(sentMessageIDs, sentM.MessageID)
@@ -425,19 +448,19 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				if message.Chat.IsPrivate() {
 					continue
 				}
-				c.Logger.WithFields(logrus.Fields{
-					"uid":   message.LeftChatMember.ID,
-					"name":  message.LeftChatMember.FirstName + " " + message.LeftChatMember.LastName + "(" + message.LeftChatMember.UserName + ")",
-					"gid":   message.Chat.ID,
-					"group": message.Chat.Title,
-				}).Info("user left group")
+				c.logger.Info().
+					Int("uid", message.LeftChatMember.ID).
+					Str("name", message.LeftChatMember.FirstName+" "+message.LeftChatMember.LastName+"("+message.LeftChatMember.UserName+")").
+					Int64("gid", message.Chat.ID).
+					Str("group", message.Chat.Title).
+					Msg("user left group")
 				if message.Chat.IsPrivate() {
 					continue
 				}
 				var groupID int64 = message.Chat.ID
 				ctx := context.Background()
 				if err := storage.RemoveGroupIDFromUserGroupIDs(ctx, message.From.ID, groupID); err != nil {
-					c.Logger.WithError(err).Error("remove groupid from user's groupids failed")
+					c.logger.Error().Err(err).Msg("remove groupid from user's groupids failed")
 				}
 			} else if message != nil && message.NewChatMembers != nil && len(*message.NewChatMembers) > 0 {
 				if message.Chat.IsPrivate() {
@@ -450,7 +473,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 					if status.Code(err) == codes.NotFound {
 						g.Set(ctx)
 					} else {
-						c.Logger.WithError(err).Error("get group failed")
+						c.logger.Error().Err(err).Msg("get group failed")
 					}
 				} else {
 					if og.Title != g.Title || og.Type != g.Type {
@@ -458,15 +481,15 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 					}
 				}
 				for _, u := range *message.NewChatMembers {
-					c.Logger.WithFields(logrus.Fields{
-						"uid":   u.ID,
-						"name":  u.FirstName + " " + u.LastName + "(" + u.UserName + ")",
-						"gid":   message.Chat.ID,
-						"group": message.Chat.Title,
-					}).Info("user joined group")
+					c.logger.Info().
+						Int("uid", u.ID).
+						Str("name", u.FirstName+" "+u.LastName+"("+u.UserName+")").
+						Int64("gid", message.Chat.ID).
+						Str("group", message.Chat.Title).
+						Msg("user joined group")
 					u, err := storage.GetUser(ctx, u.ID, g.ID)
 					if err != nil {
-						c.Logger.WithError(err).Error("get user failed")
+						c.logger.Error().Err(err).Msg("get user failed")
 					} else {
 						if len(u.GroupIDs) > 0 {
 							u.GroupIDs = append(u.GroupIDs, g.ID)
@@ -474,7 +497,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 							u.GroupIDs = []int64{g.ID}
 						}
 						if err = storage.AddGroupIDToUserGroupIDs(ctx, u.ID, g.ID); err != nil {
-							c.Logger.WithError(err).Error("add groupid to user's groupids faild")
+							c.logger.Error().Err(err).Msg("add groupid to user's groupids faild")
 						}
 					}
 				}
@@ -531,28 +554,28 @@ func (c ChatBot) deleteWebhook() (tgbotapi.APIResponse, error) {
 func (c ChatBot) RestartBot() {
 	info, err := c.TgBotClient.GetWebhookInfo()
 	if err != nil {
-		c.Logger.WithError(err).Error("GetWebhookInfo")
+		c.logger.Error().Err(err).Msg("GetWebhookInfo")
 		return
 	}
 	if info.LastErrorDate != 0 {
-		c.Logger.WithField("last error message", info.LastErrorMessage).Info("Telegram callback failed")
+		c.logger.Info().Str("last error message", info.LastErrorMessage).Msg("Telegram callback failed")
 	}
 	if info.IsSet() {
-		var resp tgbotapi.APIResponse
-		if resp, err = c.deleteWebhook(); err != nil {
-			c.Logger.WithError(err).Error("deleteWebhook failed")
+		var apiResp tgbotapi.APIResponse
+		if apiResp, err = c.deleteWebhook(); err != nil {
+			c.logger.Error().Err(err).Msg("deleteWebhook failed")
 		} else {
-			fields := logrus.Fields{
-				"desc":      resp.Description,
-				"errorCode": resp.ErrorCode,
-				"OK":        resp.Ok,
-				"result":    resp.Result,
+			info := c.logger.Info().Int("errorcode", apiResp.ErrorCode).
+				Str("description", apiResp.Description).
+				Bool("ok", apiResp.Ok).
+				RawJSON("result", apiResp.Result)
+			if apiResp.Parameters != nil {
+				info.Dict("parameters", zerolog.Dict().
+					Int64("migrateToChatID", apiResp.Parameters.MigrateToChatID).
+					Int("retryAfter", apiResp.Parameters.RetryAfter),
+				)
 			}
-			if resp.Parameters != nil {
-				fields["MigrateToChatID"] = resp.Parameters.MigrateToChatID
-				fields["RetryAfter"] = resp.Parameters.RetryAfter
-			}
-			c.Logger.WithFields(fields).Info("delete webhook success")
+			info.Msg("delete webhook success")
 		}
 	}
 	c.SetWebhook()

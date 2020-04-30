@@ -12,7 +12,6 @@ import (
 
 	"cloud.google.com/go/firestore"
 	"github.com/doylecnn/new-nsfc-bot/storage"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -239,7 +238,7 @@ func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.M
 	oldtimezone := island.Timezone
 	island.Timezone = timezone
 	if err = island.Update(ctx); err != nil {
-		_logger.WithError(err).Error("更新时区时出错狸")
+		_logger.Error().Err(err).Msg("更新时区时出错狸")
 		return nil, Error{InnerError: err,
 			ReplyText: "更新时区时出错狸",
 		}
@@ -272,7 +271,7 @@ func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.M
 	weekpriceStr := strings.TrimFunc(strings.Join(datePrice, " "), func(r rune) bool { return r == ' ' || r == '/' })
 	_, err = getWeeklyDTCPriceHistory(ctx, message, uid, weekpriceStr)
 	if err != nil {
-		_logger.WithError(err).WithField("weekprice", weekpriceStr).Error("updateweekprice error")
+		_logger.Error().Err(err).Str("weekprice", weekpriceStr).Msg("updateweekprice error")
 	}
 
 	return []*tgbotapi.MessageConfig{{
@@ -329,7 +328,7 @@ func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 			ReplyText: "查询记录时出错狸",
 		}
 	}
-	_logger.Debugf("user:%s", u.Name)
+	_logger.Debug().Str("user", u.Name).Send()
 	island, _, err := u.GetAnimalCrossingIsland(ctx)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -542,7 +541,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 	}
 	priceHistory, err := storage.GetWeeklyDTCPriceHistory(ctx, uid, weekStartDate, weekEndDate)
 	if err != nil {
-		_logger.WithError(err).Error("GetWeeklyDTCPriceHistory")
+		_logger.Error().Err(err).Msg("GetWeeklyDTCPriceHistory")
 		return nil, Error{InnerError: err,
 			ReplyText: "查找报价信息时出错狸",
 		}
@@ -551,7 +550,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 		if priceHistory != nil && len(priceHistory) > 0 {
 			client, err := firestore.NewClient(ctx, _projectID)
 			if err != nil {
-				_logger.WithError(err).Error("cmdDTCWeekPriceAndPredict NewClient")
+				_logger.Error().Err(err).Msg("cmdDTCWeekPriceAndPredict NewClient")
 				return nil, Error{InnerError: err,
 					ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
 				}
@@ -559,7 +558,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 			defer client.Close()
 			col := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid))
 			if err = storage.DeleteCollection(ctx, client, col, 10); err != nil {
-				_logger.WithError(err).Error("cmdDTCWeekPriceAndPredict")
+				_logger.Error().Err(err).Msg("cmdDTCWeekPriceAndPredict")
 				return nil, Error{InnerError: err,
 					ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
 				}
@@ -570,7 +569,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 
 		for _, ph := range priceHistory {
 			if err = ph.Set(ctx, uid); err != nil {
-				_logger.WithError(err).Error("set price history")
+				_logger.Error().Err(err).Msg("set price history")
 				return nil, Error{InnerError: err,
 					ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
 				}
@@ -749,7 +748,7 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 			if len(args) > 1 {
 				localtime, err = time.Parse("2006-01-02 15:04:05", args[1])
 				if err != nil {
-					_logger.WithError(err).WithField("input date", args[1]).Debug("error")
+					_logger.Debug().Err(err).Str("input date", args[1]).Msg("error")
 				}
 			}
 		}
@@ -821,12 +820,12 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, localtime time.Time) (topPriceUsers []*storage.User, lowestPriceUsers []*storage.User, changed bool, err error) {
 	group, err := storage.GetGroup(ctx, chatID)
 	if err != nil {
-		_logger.WithError(err).Error("GetGroup")
+		_logger.Error().Err(err).Msg("GetGroup")
 		return nil, nil, false, err
 	}
 	users, err := storage.GetGroupUsers(ctx, chatID)
 	if err != nil {
-		_logger.WithError(err).Error("GetGroupUsers")
+		_logger.Error().Err(err).Msg("GetGroupUsers")
 		return nil, nil, false, err
 	}
 
@@ -871,12 +870,11 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 		}
 		island.WeekPriceHistory, err = storage.GetWeeklyDTCPriceHistory(ctx, uid, weekStartDate, weekEndDate)
 		if err != nil {
-			_logger.WithError(err).WithFields(logrus.Fields{
-				"uid":              u.ID,
-				"weekStart":        weekStartDate.Format(time.RFC1123Z),
-				"weekEndDate":      weekStartDate.Format(time.RFC1123Z),
-				"weekStartDateLoc": weekStartDateLoc.Format(time.RFC1123Z),
-			}).Error("GetWeeklyDTCPriceHistory")
+			_logger.Error().Err(err).Int("uid", u.ID).
+				Time("weekStart", weekStartDate).
+				Time("weekEndDate", weekStartDate).
+				Time("weekStartDateLoc", weekStartDateLoc).
+				Msg("GetWeeklyDTCPriceHistory")
 		}
 		u.Island = island
 		priceUsers = append(priceUsers, u)
@@ -941,7 +939,7 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 	if changed {
 		group.ACNHTurnipPricesBoard = newACNHTurnipPricesBoard
 		if err = group.Update(ctx); err != nil {
-			_logger.WithError(err).Error("update group ACNHTurnipPricesBoard")
+			_logger.Error().Err(err).Msg("update group ACNHTurnipPricesBoard")
 		}
 	}
 	return
@@ -997,27 +995,27 @@ func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	ctx := context.Background()
 	foundUsersByUserName, err := storage.GetUsersByName(ctx, query, groupID)
 	if err != nil && status.Code(err) != codes.NotFound {
-		_logger.WithError(err).Error("error in GetUsersByName")
+		_logger.Error().Err(err).Msg("error in GetUsersByName")
 	}
 
 	foundUsersByNSAccountName, err := storage.GetUsersByNSAccountName(ctx, query, groupID)
 	if err != nil && status.Code(err) != codes.NotFound {
-		_logger.WithError(err).Error("error in GetUsersByNSAccountName")
+		_logger.Error().Err(err).Msg("error in GetUsersByNSAccountName")
 	}
 
 	foundUsersByIslandName, err := storage.GetUsersByAnimalCrossingIslandName(ctx, query, groupID)
 	if err != nil && status.Code(err) != codes.NotFound {
-		_logger.WithError(err).Error("error in GetUsersByAnimalCrossingIslandName")
+		_logger.Error().Err(err).Msg("error in GetUsersByAnimalCrossingIslandName")
 	}
 
 	foundUserByOwnerName, err := storage.GetUsersByAnimalCrossingIslandOwnerName(ctx, query, groupID)
 	if err != nil && status.Code(err) != codes.NotFound {
-		_logger.WithError(err).Error("error in GetUsersByAnimalCrossingIslandOwnerName")
+		_logger.Error().Err(err).Msg("error in GetUsersByAnimalCrossingIslandOwnerName")
 	}
 
 	foundUserByIslandInfo, err := storage.GetUsersByAnimalCrossingIslandInfo(ctx, query, groupID)
 	if err != nil && status.Code(err) != codes.NotFound {
-		_logger.WithError(err).Error("error in GetUsersByAnimalCrossingIslandOpenInfo")
+		_logger.Error().Err(err).Msg("error in GetUsersByAnimalCrossingIslandOpenInfo")
 	}
 
 	var replyText string
@@ -1141,7 +1139,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 	}
 
 	if len(us) == 0 {
-		_logger.Info("users count == 0")
+		_logger.Info().Msg("users count == 0")
 		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,

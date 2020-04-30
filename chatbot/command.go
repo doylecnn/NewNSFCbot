@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"time"
 
 	fuzzy "github.com/doylecnn/go-fuzzywuzzy"
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -52,7 +50,7 @@ func NewRouter() Router {
 // HandleFunc regist HandleFunc
 func (r Router) HandleFunc(cmd string, f func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error)) {
 	if _, ok := r.commands[cmd]; ok {
-		_logger.Fatalln(errors.New("already exists handle func"))
+		_logger.Fatal().Err(errors.New("already exists handle func")).Send()
 	}
 	r.commands[cmd] = f
 }
@@ -69,11 +67,11 @@ func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	}
 	if groupID != 0 {
 		if lerr := storage.AddGroupIDToUserGroupIDs(ctx, message.From.ID, groupID); lerr != nil {
-			_logger.WithError(err).Error("add groupid to user's groupids failed")
+			_logger.Error().Err(err).Msg("add groupid to user's groupids failed")
 		}
 		g, err := storage.GetGroup(ctx, groupID)
 		if err != nil && status.Code(err) != codes.NotFound {
-			_logger.Errorf("GetGroupError:%v", err)
+			_logger.Error().Err(err).Msg("GetGroupError")
 		} else if err != nil && status.Code(err) == codes.NotFound {
 			g = storage.Group{ID: message.Chat.ID, Type: message.Chat.Type, Title: message.Chat.Title}
 			g.Set(ctx)
@@ -85,14 +83,13 @@ func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 			}
 		}
 	}
-	_logger.WithFields(logrus.Fields{
-		"command":          message.Command(),
-		"args":             message.CommandArguments(),
-		"receive datetime": message.Time().Format(time.RFC1123Z),
-		"UID":              message.From.ID,
-		"ChatID":           message.Chat.ID,
-		"FromUser":         message.From.UserName,
-	}).Info("receive command")
+	_logger.Info().Str("command", message.Command()).
+		Str("args", message.CommandArguments()).
+		Time("receive datetime", message.Time()).
+		Int("UID", message.From.ID).
+		Int64("ChatID", message.Chat.ID).
+		Str("FromUser", message.From.UserName).
+		Msg("receive command")
 	cmd := message.Command()
 	if c, ok := r.commands[cmd]; ok {
 		replies, e := c(message)
@@ -120,7 +117,7 @@ func cmdSuggest(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 	cmd := message.Command()
 	cmds, err := getMyCommands()
 	if err != nil {
-		_logger.WithError(err).Warn("get my commands failed.")
+		_logger.Warn().Err(err).Msg("get my commands failed.")
 	}
 	var fuzzyScores []int
 	var scoreCmdIdx map[int]int = make(map[int]int)

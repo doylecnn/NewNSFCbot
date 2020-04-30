@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"time"
@@ -10,10 +9,9 @@ import (
 	"math/rand"
 
 	"github.com/doylecnn/new-nsfc-bot/chatbot"
-	"github.com/doylecnn/new-nsfc-bot/stackdriverhook"
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	"github.com/doylecnn/new-nsfc-bot/web"
-	"github.com/sirupsen/logrus"
+	"github.com/rs/zerolog/log"
 )
 
 type env struct {
@@ -26,22 +24,15 @@ type env struct {
 }
 
 func main() {
-	rand.Seed(time.Now().Unix())
-	logger := logrus.New()
-	logger.SetLevel(logrus.InfoLevel)
 	env := readEnv()
-	storage.ProjectID = env.projectID
-	if h, err := stackdriverhook.NewStackDriverHook(env.projectID, "nsfcbot"); err != nil {
-		logger.WithError(err).Error("new hook failed")
-	} else {
-		defer h.Close()
-		logger.Hooks.Add(h)
-		logger.Out = ioutil.Discard
-	}
-	logger.SetLevel(logrus.DebugLevel)
-	storage.Logger = logger
-	bot := chatbot.NewChatBot(env.BotToken, env.Domain, env.AppID, env.projectID, env.Port, env.BotAdminID, logger)
-	web, updates := web.NewWeb(env.BotToken, env.Domain, env.AppID, env.projectID, env.Port, env.BotAdminID, bot, logger)
+	rand.Seed(time.Now().Unix())
+
+	storage.InitLogger(env.projectID)
+
+	bot := chatbot.NewChatBot(env.BotToken, env.Domain, env.AppID, env.projectID, env.Port, env.BotAdminID)
+	defer bot.Close()
+	web, updates := web.NewWeb(env.BotToken, env.Domain, env.AppID, env.projectID, env.Port, env.BotAdminID, bot)
+	defer web.Close()
 
 	go bot.MessageHandler(updates)
 	web.Run()
@@ -51,7 +42,7 @@ func readEnv() env {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
-		logrus.WithField("port", port).Info("set default port")
+		log.Info().Str("port", port).Msg("set default port")
 	}
 
 	token := os.Getenv("BOT_TOKEN")
@@ -59,28 +50,28 @@ func readEnv() env {
 	botAdmin := os.Getenv("BOT_ADMIN")
 	if botAdmin == "" {
 		err := errors.New("not set env BOT_ADMIN")
-		logrus.Fatal(err)
+		log.Logger.Fatal().Err(err).Send()
 	}
 	botAdminID, err := strconv.Atoi(botAdmin)
 	if err != nil {
-		logrus.Fatal(err)
+		log.Logger.Fatal().Err(err).Send()
 	}
 
 	appID := os.Getenv("GAE_APPLICATION")
 	if appID == "" {
-		logrus.Fatal("no env var: GAE_APPLICATION")
+		log.Logger.Fatal().Msg("no env var: GAE_APPLICATION")
 	}
 	appID = appID[2:]
-	logrus.Infof("appID:%s", appID)
+	log.Logger.Info().Str("appID", appID).Send()
 
 	projectID := os.Getenv("PROJECT_ID")
 	if projectID == "" {
-		logrus.Fatal("no env var: PROJECT_ID")
+		log.Logger.Fatal().Msg("no env var: PROJECT_ID")
 	}
 
 	domain := os.Getenv("DOMAIN")
 	if domain == "" {
-		logrus.Fatal("no env var: DOMAIN")
+		log.Logger.Fatal().Msg("no env var: DOMAIN")
 	}
 
 	return env{port, token, botAdminID, appID, domain, projectID}

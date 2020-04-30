@@ -165,7 +165,7 @@ func cmdDeleteMe(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 		}
 	} else if u != nil {
 		if err = u.Delete(ctx); err != nil {
-			_logger.WithError(err).Error()
+			_logger.Error().Err(err).Send()
 		}
 	}
 	return []*tgbotapi.MessageConfig{{
@@ -186,7 +186,7 @@ func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig,
 		}
 	}
 	if err != nil && status.Code(err) == codes.NotFound {
-		_logger.Debug("没有找到用户记录")
+		_logger.Debug().Msg("没有找到用户记录")
 		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
@@ -282,7 +282,7 @@ func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 	}
 
 	if len(us) == 0 {
-		_logger.Info("users count == 0")
+		_logger.Info().Msg("users count == 0")
 		return []*tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
@@ -341,7 +341,7 @@ func inlineQueryMyIsland(query *tgbotapi.InlineQuery) (*tgbotapi.InlineConfig, e
 	}
 	island, _, err := u.GetAnimalCrossingIsland(ctx)
 	if err != nil {
-		_logger.WithError(err).Info("inlineQueryMyIsland GetAnimalCrossingIsland")
+		_logger.Info().Err(err).Msg("inlineQueryMyIsland GetAnimalCrossingIsland")
 		return nil, nil
 	}
 	if island == nil {

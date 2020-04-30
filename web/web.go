@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -12,20 +13,23 @@ import (
 	"time"
 
 	"github.com/doylecnn/new-nsfc-bot/chatbot"
+	"github.com/doylecnn/new-nsfc-bot/stackdriverhook"
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	"github.com/doylecnn/new-nsfc-bot/web/middleware"
+	"github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-	"github.com/sirupsen/logrus"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/thinkerou/favicon"
-	ginlogrus "github.com/toorop/gin-logrus"
 )
 
-var _logger *logrus.Logger
+var _logger zerolog.Logger
 
 // Web is web
 type Web struct {
-	Logger      *logrus.Logger
+	logwriter   *stackdriverhook.StackdriverLoggingWriter
+	logger      zerolog.Logger
 	APPID       string
 	Domain      string
 	Port        string
@@ -37,14 +41,26 @@ type Web struct {
 }
 
 // NewWeb return new Web
-func NewWeb(token, domain, appID, projectID, port string, adminID int, bot chatbot.ChatBot, logger *logrus.Logger) (web Web, updates chan tgbotapi.Update) {
-	_logger = logger
+func NewWeb(token, domain, appID, projectID, port string, adminID int, bot chatbot.ChatBot) (web Web, updates chan tgbotapi.Update) {
+	var zerologger zerolog.Logger
+	sw, err := stackdriverhook.NewStackdriverLoggingWriter(projectID, "nsfcbot", map[string]string{"from": "web"})
+	if err != nil {
+		zerologger = log.Logger
+		zerologger.Error().Err(err).Msg("new NewStackdriverLoggingWriter failed")
+	} else {
+		zerologger = zerolog.New(sw)
+		_logger = zerologger
+	}
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(ginlogrus.Logger(logger), gin.Recovery())
+	r.Use(logger.SetLogger(logger.Config{
+		Logger: &zerologger,
+		UTC:    true,
+	}), gin.Recovery())
 	secretKey := sha256.Sum256([]byte(token))
 	web = Web{
-		Logger:      logger,
+		logwriter:   sw,
+		logger:      zerologger,
 		APPID:       appID,
 		Domain:      domain,
 		Port:        port,
@@ -91,6 +107,11 @@ func NewWeb(token, domain, appID, projectID, port string, adminID int, bot chatb
 	})
 
 	return
+}
+
+// Close close bot
+func (w Web) Close() {
+	w.logwriter.Close()
 }
 
 // Run run the web
@@ -154,7 +175,7 @@ func (w Web) export(c *gin.Context) {
 			authData, _ := c.Cookie("auth_data_str")
 			userID, err := middleware.GetAuthDataInfo(authData, "id")
 			if err != nil {
-				_logger.WithError(err).Error("auth failed")
+				_logger.Error().Err(err).Msg("auth failed")
 				c.Abort()
 				return
 			}
@@ -162,7 +183,7 @@ func (w Web) export(c *gin.Context) {
 			if userID == userid {
 				uid, err := strconv.ParseInt(userid, 10, 64)
 				if err != nil {
-					_logger.WithError(err).Error("auth failed")
+					_logger.Error().Err(err).Msg("auth failed")
 					c.Abort()
 					return
 				}
@@ -170,7 +191,7 @@ func (w Web) export(c *gin.Context) {
 					ctx := context.Background()
 					us, err := storage.GetAllUsers(ctx)
 					if err != nil {
-						_logger.WithError(err).Error("auth failed")
+						_logger.Error().Err(err).Msg("auth failed")
 						c.Abort()
 						return
 					}
@@ -236,12 +257,12 @@ func (w Web) export(c *gin.Context) {
 					c.SecureJSON(http.StatusOK, userinfos)
 					return
 				}
-				_logger.Error("not admin")
+				_logger.Error().Err(errors.New("not admin")).Send()
 				c.Abort()
 				return
 
 			}
-			_logger.Error("not admin")
+			_logger.Error().Err(errors.New("not admin")).Send()
 			c.Abort()
 			return
 		}

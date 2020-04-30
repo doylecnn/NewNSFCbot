@@ -1,44 +1,105 @@
 package stackdriverhook
+
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"regexp"
 	"runtime"
 
 	"cloud.google.com/go/errorreporting"
 	"cloud.google.com/go/logging"
-	"github.com/sirupsen/logrus"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
-// StackDriverHook StackDriverHook
-type StackDriverHook struct {
+// A StackdriverLoggingWriter accepts pre-encoded JSON messages and writes
+// them to Google Stackdriver Logging. It implements zerolog.LevelWriter and
+// maps Zerolog levels to Stackdriver levels.
+type StackdriverLoggingWriter struct {
 	client      *logging.Client
 	errorClient *errorreporting.Client
 	logger      *logging.Logger
 }
 
-var logLevelMappings = map[logrus.Level]logging.Severity{
-	logrus.TraceLevel: logging.Default,
-	logrus.DebugLevel: logging.Debug,
-	logrus.InfoLevel:  logging.Info,
-	logrus.WarnLevel:  logging.Warning,
-	logrus.ErrorLevel: logging.Error,
-	logrus.FatalLevel: logging.Critical,
-	logrus.PanicLevel: logging.Critical,
+// Write always returns len(p), nil.
+func (sw *StackdriverLoggingWriter) Write(p []byte) (int, error) {
+	sw.logger.Log(logging.Entry{Payload: rawJSON(p), Severity: logging.Default})
+	return len(p), nil
 }
 
-// NewStackDriverHook NewStackDriverHook
-func NewStackDriverHook(GCPProjectID, logName string) (*StackDriverHook, error) {
-	ctx := context.Background()
+// WriteLevel implements zerolog.LevelWriter. It always returns len(p), nil.
+func (sw *StackdriverLoggingWriter) WriteLevel(level zerolog.Level, p []byte) (int, error) {
+	severity := logging.Default
 
-	client, err := logging.NewClient(ctx, GCPProjectID)
-	if err != nil {
-		return nil, err
+	// More efficient than logging.ParseSeverity(level.String())
+	switch level {
+	case zerolog.DebugLevel:
+		severity = logging.Debug
+	case zerolog.InfoLevel:
+		severity = logging.Info
+	case zerolog.WarnLevel:
+		severity = logging.Warning
+	case zerolog.ErrorLevel:
+		severity = logging.Error
+	case zerolog.FatalLevel:
+		severity = logging.Critical
+	case zerolog.PanicLevel:
+		severity = logging.Critical
 	}
 
-	errorClient, err := errorreporting.NewClient(ctx, GCPProjectID, errorreporting.Config{
+	if severity != logging.Error && severity != logging.Critical {
+		sw.logger.Log(logging.Entry{Payload: rawJSON(p), Severity: severity})
+	} else {
+		var m map[string]interface{} = make(map[string]interface{})
+		if jsonUnmarshalError := json.Unmarshal(p, &m); jsonUnmarshalError != nil {
+			sw.errorClient.Report(errorreporting.Entry{
+				Error: m["error"].(error),
+				Stack: sw.getStackTrace(),
+			})
+		} else {
+			sw.errorClient.Report(errorreporting.Entry{
+				Error: jsonUnmarshalError,
+				Stack: sw.getStackTrace(),
+			})
+		}
+	}
+
+	return len(p), nil
+}
+
+func (sw *StackdriverLoggingWriter) getStackTrace() []byte {
+	stackSlice := make([]byte, 2048)
+	length := runtime.Stack(stackSlice, false)
+	stack := string(stackSlice[0:length])
+	re := regexp.MustCompile("[\r\n].*zerolog.*")
+	res := re.ReplaceAllString(stack, "")
+	return []byte(res)
+}
+
+// Flush log
+func (sw *StackdriverLoggingWriter) Flush() error {
+	return sw.logger.Flush()
+}
+
+// Close Close
+func (sw *StackdriverLoggingWriter) Close() {
+	sw.logger.Flush()
+	sw.errorClient.Flush()
+	sw.client.Close()
+	sw.errorClient.Close()
+}
+
+// NewStackdriverLoggingWriter create new writer
+func NewStackdriverLoggingWriter(GCPProjectID, logName string, labels map[string]string, opts ...logging.LoggerOption) (*StackdriverLoggingWriter, error) {
+	client, err := logging.NewClient(context.Background(), GCPProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("create client: %w", err)
+	}
+	if err := client.Ping(context.Background()); err != nil {
+		return nil, fmt.Errorf("ping: %w", err)
+	}
+	errorClient, err := errorreporting.NewClient(context.Background(), GCPProjectID, errorreporting.Config{
 		ServiceName: GCPProjectID,
 		OnError: func(err error) {
 			log.Printf("Could not log error: %v", err)
@@ -48,90 +109,16 @@ func NewStackDriverHook(GCPProjectID, logName string) (*StackDriverHook, error) 
 		return nil, err
 	}
 
-	return &StackDriverHook{
+	// labels comes before opts so that any CommonLabels in opts take precedence.
+	opts = append([]logging.LoggerOption{logging.CommonLabels(labels)}, opts...)
+	return &StackdriverLoggingWriter{
+		logger:      client.Logger(logName, opts...),
 		client:      client,
 		errorClient: errorClient,
-		logger:      client.Logger(logName),
 	}, nil
 }
 
-// Close Close 
-func (sh *StackDriverHook) Close() {
-	sh.client.Close()
-	sh.errorClient.Close()
-}
+type rawJSON []byte
 
-// Levels Levels
-func (sh *StackDriverHook) Levels() []logrus.Level {
-	return logrus.AllLevels
-}
-
-//Fire Fire
-func (sh *StackDriverHook) Fire(entry *logrus.Entry) error {
-	payload := map[string]interface{}{
-		"Message": entry.Message,
-		"Data":    entry.Data,
-	}
-	level := logLevelMappings[entry.Level]
-	sh.logger.Log(logging.Entry{Payload: payload, Severity: level})
-	if int(level) >= int(logging.Error) {
-		err := getError(entry)
-		if err == nil {
-			errData, e := json.Marshal(payload)
-			if e != nil {
-				fmt.Printf("Error %v", e)
-			}
-			fmt.Print(string(errData))
-			err = fmt.Errorf(string(errData))
-		}
-		fmt.Println(err.Error())
-
-		sh.errorClient.Report(errorreporting.Entry{
-			Error: err,
-			Stack: sh.getStackTrace(),
-		})
-	}
-	return nil
-}
-
-func (sh *StackDriverHook) getStackTrace() []byte {
-	stackSlice := make([]byte, 2048)
-	length := runtime.Stack(stackSlice, false)
-	stack := string(stackSlice[0:length])
-	re := regexp.MustCompile("[\r\n].*logrus.*")
-	res := re.ReplaceAllString(stack, "")
-	return []byte(res)
-}
-
-type stackDriverError struct {
-	Err         interface{}
-	Code        interface{}
-	Description interface{}
-	Message     interface{}
-	Env         interface{}
-}
-
-func (e stackDriverError) Error() string {
-	return fmt.Sprintf("%v - %v - %v - %v - %v", e.Code, e.Description, e.Message, e.Err, e.Env)
-}
-
-func getError(entry *logrus.Entry) error {
-	errData := entry.Data["error"]
-	env := entry.Data["env"]
-	code := entry.Data["ErrCode"]
-	desc := entry.Data["ErrDescription"]
-	msg := entry.Message
-
-	err := stackDriverError{
-		Err:         errData,
-		Code:        code,
-		Message:     msg,
-		Description: desc,
-		Env:         env,
-	}
-
-	return err
-}
-
-// Wait Wait
-func (sh *StackDriverHook) Wait() {}
+func (r rawJSON) MarshalJSON() ([]byte, error)  { return []byte(r), nil }
+func (r *rawJSON) UnmarshalJSON(b []byte) error { *r = rawJSON(b); return nil }
