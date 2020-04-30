@@ -40,22 +40,21 @@ func (t Timezone) String() string {
 
 // Island in AnimalCrossing
 type Island struct {
-	Path             string          `firestore:"-"`
-	Name             string          `firestore:"name"`
-	NameInsensitive  string          `firestore:"name_insensitive,omitempty"`
-	Hemisphere       int             `firestore:"hemisphere"`
-	AirportIsOpen    bool            `firestore:"AirportIsOpen"`
-	OpenTime         time.Time       `firestore:"OpenTime,omitempty"`
-	BaseInfo         string          `firestore:"BaseInfo"`
-	Info             string          `firestore:"Info"`
-	OnBoardQueueID   string          `firestore:"OnBoardQueueID"`
-	Timezone         Timezone        `filestore:"timezone"`
-	Fruits           []string        `firestore:"Fruits,omitempty"`
-	LastPrice        PriceHistory    `firestore:"LastPrice,omitempty"`
-	Owner            string          `firestore:"owner,omitempty"`
-	OwnerInsensitive string          `firestore:"owner_insensitive,omitempty"`
-	ResidentUID      int             `firestore:"resident_userid,omitempty"` // 指向真正的岛主
-	WeekPriceHistory []*PriceHistory `firestore:"-"`
+	Path             string        `firestore:"-"`
+	Name             string        `firestore:"name"`
+	NameInsensitive  string        `firestore:"name_insensitive"`
+	Hemisphere       int           `firestore:"hemisphere"`
+	AirportIsOpen    bool          `firestore:"AirportIsOpen"`
+	OpenTime         time.Time     `firestore:"OpenTime"`
+	BaseInfo         string        `firestore:"BaseInfo"`
+	Info             string        `firestore:"Info"`
+	OnBoardQueueID   string        `firestore:"OnBoardQueueID"`
+	Timezone         Timezone      `filestore:"timezone"`
+	LastPrice        *TurnipPrice  `firestore:"LastPrice,omitempty"`
+	Owner            string        `firestore:"owner"`
+	OwnerInsensitive string        `firestore:"owner_insensitive"`
+	ResidentUID      int           `firestore:"resident_userid,omitempty"` // 指向真正的岛主
+	WeekPriceHistory []TurnipPrice `firestore:"-"`
 }
 
 // GetAnimalCrossingIslandByUserID get island by user id
@@ -234,12 +233,6 @@ func (i Island) ShortInfo() string {
 	if !strings.HasSuffix(i.Name, "岛") {
 		i.Name += "岛"
 	}
-	if len(i.BaseInfo) == 0 {
-		i.BaseInfo = strings.Join(i.Fruits, ", ")
-		if err := i.Update(context.Background()); err != nil {
-			logger.Error().Err(err).Send()
-		}
-	}
 	var text string = fmt.Sprintf("位于%s半球%s时区的岛屿：%s, 岛民代表：%s。 %s\n基本信息：%s\n\n", hemisphere, i.Timezone.String(), i.Name, i.Owner, airportstatus, i.BaseInfo)
 	if i.AirportIsOpen {
 		if len(i.Info) > 0 {
@@ -265,12 +258,6 @@ func (i Island) String() string {
 	if !strings.HasSuffix(i.Name, "岛") {
 		i.Name += "岛"
 	}
-	if len(i.BaseInfo) == 0 {
-		i.BaseInfo = strings.Join(i.Fruits, ", ")
-		if err := i.Update(context.Background()); err != nil {
-			logger.Error().Err(err).Send()
-		}
-	}
 	var text string = fmt.Sprintf("位于%s半球%s时区的岛屿：%s, 岛民代表：%s。 %s\n基本信息：%s\n\n", hemisphere, i.Timezone.String(), i.Name, i.Owner, airportstatus, i.BaseInfo)
 	if i.AirportIsOpen {
 		if len(i.OnBoardQueueID) > 0 {
@@ -283,55 +270,16 @@ func (i Island) String() string {
 	return text
 }
 
-// PriceHistory 大头菜 price history
-type PriceHistory struct {
+// TurnipPrice 大头菜价
+type TurnipPrice struct {
 	Path     string    `firestore:"-"`
 	Date     time.Time `firestore:"Date"`
 	Price    int       `firestore:"Price"`
 	Timezone Timezone  `firestore:"Timezone"`
 }
 
-// Set price history
-func (p PriceHistory) Set(ctx context.Context, uid int) (err error) {
-	client, err := firestore.NewClient(ctx, projectID)
-	if err != nil {
-		return
-	}
-	defer client.Close()
-
-	_, err = client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid)).Doc(fmt.Sprintf("%d", p.Date.Unix())).Set(ctx, p)
-	if err != nil {
-		err = fmt.Errorf("error when set price history%w", err)
-	}
-	return
-}
-
-// Update price history
-func (p PriceHistory) Update(ctx context.Context) (err error) {
-	client, err := firestore.NewClient(ctx, projectID)
-	if err != nil {
-		return
-	}
-	defer client.Close()
-
-	_, err = client.Doc(p.Path).Set(ctx, p)
-	return
-}
-
-// Delete price history
-func (p PriceHistory) Delete(ctx context.Context) (err error) {
-	client, err := firestore.NewClient(ctx, projectID)
-	if err != nil {
-		return
-	}
-	defer client.Close()
-
-	_, err = client.Doc(p.Path).Delete(ctx)
-	return
-}
-
 //LocationDateTime get location datetime
-func (p PriceHistory) LocationDateTime() (datetime time.Time) {
+func (p TurnipPrice) LocationDateTime() (datetime time.Time) {
 	var loc *time.Location
 	loc = p.Timezone.Location()
 	datetime = p.Date.In(loc)
@@ -342,7 +290,7 @@ func (p PriceHistory) LocationDateTime() (datetime time.Time) {
 func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 	island, residentUID, err := GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
-		logger.Error().Err(err).Msg("GetAnimalCrossingIslandByUserID")
+		logger.Warn().Err(err).Msg("GetAnimalCrossingIslandByUserID")
 		return
 	}
 	if residentUID > 0 {
@@ -351,7 +299,7 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 	lp, err := GetLastPriceHistory(ctx, uid, island.LastPrice.Date)
 	if err != nil {
 		if err.Error() != "NotFound" && status.Code(err) != codes.NotFound {
-			logger.Error().Err(err).Msg("GetLastPriceHistory")
+			logger.Warn().Err(err).Msg("GetLastPriceHistory")
 			return
 		}
 	}
@@ -359,74 +307,84 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 	if island.Timezone != 0 {
 		islandLoc := island.Timezone.Location()
 		loc := now.In(islandLoc)
-		if loc.Weekday() == 0 {
+		if loc.Weekday() == 0 && loc.Hour() >= 5 {
 			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 5, 0, 0, 0, islandLoc).UTC()
 		} else if loc.Hour() >= 8 && loc.Hour() < 12 {
 			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 8, 0, 0, 0, islandLoc).UTC()
-		} else if loc.Hour() < 8 || loc.Hour() >= 12 {
+		} else if loc.Hour() >= 12 {
+			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 12, 0, 0, 0, islandLoc).UTC()
+		} else if loc.Hour() < 8 {
+			loc = loc.AddDate(0, 0, -1)
 			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 12, 0, 0, 0, islandLoc).UTC()
 		}
 	}
-	priceHistory := PriceHistory{Date: now, Price: price, Timezone: island.Timezone}
-	island.LastPrice = priceHistory
-	if err = island.Update(ctx); err != nil {
-		logger.Error().Err(err).Msg("update island last price")
+	tp := TurnipPrice{Date: now, Price: price, Timezone: island.Timezone}
+	island.LastPrice = &tp
+	client, err := firestore.NewClient(ctx, projectID)
+	if err != nil {
+		err = fmt.Errorf("firestore.NewClient failed: %w", err)
 		return
 	}
-	if lp != nil {
-		lpd := lp.LocationDateTime()
-		pd := priceHistory.LocationDateTime()
-		if lpd.Day() == pd.Day() &&
-			((lpd.Weekday() == 0 && pd.Weekday() == 0) ||
-				(lpd.Weekday() > 0 && pd.Weekday() > 0 &&
-					(lpd.Hour() >= 8 && lpd.Hour() < 12 && pd.Hour() == 8) ||
-					(lpd.Hour() >= 12 && lpd.Hour() < 8 && pd.Hour() == 12))) {
-			if err = lp.Delete(ctx); err != nil {
-				logger.Error().Err(err).Msg("Delete old price")
-				return
-			}
-		}
+	defer client.Close()
+	batch := client.Batch()
+	islandRef := client.Doc(island.Path)
+	batch.Update(islandRef, []firestore.Update{{Path: "LastPrice", Value: tp}})
+	lpd := lp.LocationDateTime()
+	pd := tp.LocationDateTime()
+	logger.Debug().Msg("update or create tp")
+	if lpd.Day() == pd.Day() &&
+		((lpd.Weekday() == 0 && pd.Weekday() == 0) ||
+			(lpd.Weekday() > 0 && pd.Weekday() > 0 &&
+				(lpd.Hour() == 8 && pd.Hour() == 8) ||
+				(lpd.Hour() == 12 && pd.Hour() == 12))) {
+		lpRef := client.Doc(lp.Path)
+		batch.Update(lpRef, []firestore.Update{{Path: "Price", Value: tp.Price}})
+	} else {
+		newLPRef := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid)).Doc(fmt.Sprintf("%d", tp.Date.Unix()))
+		batch.Create(newLPRef, tp)
 	}
-	return priceHistory.Set(ctx, uid)
+	_, err = batch.Commit(ctx)
+	if err != nil {
+		err = fmt.Errorf("batch.Commit failed: %w", err)
+	}
+	return
 }
 
 // GetLastPriceHistory get price history
-func GetLastPriceHistory(ctx context.Context, uid int, lasttime time.Time) (priceHistory *PriceHistory, err error) {
+func GetLastPriceHistory(ctx context.Context, uid int, lasttime time.Time) (tp TurnipPrice, err error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
-		return nil, err
+		return
 	}
 	defer client.Close()
 
-	priceHistory = &PriceHistory{}
-	phPath := fmt.Sprintf("users/%d/games/animal_crossing/price_history/%d", uid, lasttime.Unix())
-	dsnap, err := client.Doc(phPath).Get(ctx)
+	tp = TurnipPrice{}
+	tpPath := fmt.Sprintf("users/%d/games/animal_crossing/price_history/%d", uid, lasttime.Unix())
+	dsnap, err := client.Doc(tpPath).Get(ctx)
 	if err == nil {
-		if err = dsnap.DataTo(priceHistory); err != nil {
-			return nil, err
+		if err = dsnap.DataTo(&tp); err != nil {
+			return
 		}
-		priceHistory.Path = phPath
+		tp.Path = tpPath
 	} else {
 		if status.Code(err) == codes.NotFound {
-			phs, err := getPriceHistory(ctx, client, uid, "Date", firestore.Desc, 1)
+			var phs []TurnipPrice
+			phs, err = getPriceHistory(ctx, client, uid, "Date", firestore.Desc, 1)
 			if err != nil {
-				return nil, err
+				return
 			}
-			if len(phs) > 0 && phs[0] != nil {
-				priceHistory = phs[0]
+			if len(phs) > 0 {
+				tp = phs[0]
 			}
 		} else {
-			return nil, err
+			return
 		}
 	}
-	if priceHistory == nil {
-		return nil, errors.New("NotFound")
-	}
-	return priceHistory, nil
+	return tp, nil
 }
 
 // GetPriceHistory get price history
-func GetPriceHistory(ctx context.Context, uid int) (priceHistory []*PriceHistory, err error) {
+func GetPriceHistory(ctx context.Context, uid int) (priceHistory []TurnipPrice, err error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -436,7 +394,7 @@ func GetPriceHistory(ctx context.Context, uid int) (priceHistory []*PriceHistory
 	return getPriceHistory(ctx, client, uid, "Date", firestore.Asc, 0)
 }
 
-func getPriceHistory(ctx context.Context, client *firestore.Client, uid int, path string, dir firestore.Direction, limit int) (priceHistory []*PriceHistory, err error) {
+func getPriceHistory(ctx context.Context, client *firestore.Client, uid int, path string, dir firestore.Direction, limit int) (turnipPriceHistory []TurnipPrice, err error) {
 	query := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid)).OrderBy("Date", dir)
 	var iter *firestore.DocumentIterator
 	if limit > 0 {
@@ -452,19 +410,19 @@ func getPriceHistory(ctx context.Context, client *firestore.Client, uid int, pat
 		if err != nil {
 			return nil, err
 		}
-		var price *PriceHistory = &PriceHistory{}
-		if err = doc.DataTo(price); err != nil {
+		var price TurnipPrice = TurnipPrice{}
+		if err = doc.DataTo(&price); err != nil {
 			logger.Warn().Err(err).Send()
 			return nil, err
 		}
 		price.Path = fmt.Sprintf("users/%d/games/animal_crossing/price_history/%d", uid, price.Date.Unix())
-		priceHistory = append(priceHistory, price)
+		turnipPriceHistory = append(turnipPriceHistory, price)
 	}
-	return priceHistory, nil
+	return turnipPriceHistory, nil
 }
 
 // GetWeeklyDTCPriceHistory 获得当前周自周日起的价格。周日是买入价
-func GetWeeklyDTCPriceHistory(ctx context.Context, uid int, startDate, endDate time.Time) (priceHistory []*PriceHistory, err error) {
+func GetWeeklyDTCPriceHistory(ctx context.Context, uid int, startDate, endDate time.Time) (turnipPriceHistory []TurnipPrice, err error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -480,13 +438,13 @@ func GetWeeklyDTCPriceHistory(ctx context.Context, uid int, startDate, endDate t
 		if err != nil {
 			return nil, err
 		}
-		var price *PriceHistory = &PriceHistory{}
-		if err = doc.DataTo(price); err != nil {
+		var price TurnipPrice = TurnipPrice{}
+		if err = doc.DataTo(&price); err != nil {
 			logger.Warn().Err(err).Send()
 			return nil, err
 		}
 		price.Path = fmt.Sprintf("users/%d/games/animal_crossing/price_history/%d", uid, price.Date.Unix())
-		priceHistory = append(priceHistory, price)
+		turnipPriceHistory = append(turnipPriceHistory, price)
 	}
-	return priceHistory, nil
+	return turnipPriceHistory, nil
 }

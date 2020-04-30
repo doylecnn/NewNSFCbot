@@ -149,7 +149,6 @@ func cmdToggleDebugMode(message *tgbotapi.Message) (replyMessages []*tgbotapi.Me
 
 func (c ChatBot) cmdClearMessages(message *tgbotapi.Message) (replyMessages []*tgbotapi.MessageConfig, err error) {
 	if len(sentMsgs) > 0 {
-		c.logger.Info().Int("sentMsgs len:", len(sentMsgs)).Send()
 		sort.Slice(sentMsgs, func(i, j int) bool {
 			return sentMsgs[i].Time.After(sentMsgs[j].Time)
 		})

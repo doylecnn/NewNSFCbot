@@ -474,10 +474,6 @@ func GetUsersByAnimalCrossingIslandInfo(ctx context.Context, info string, groupI
 			if island.ResidentUID > 0 {
 				continue
 			}
-			if len(island.BaseInfo) == 0 && len(island.Fruits) > 0 {
-				island.BaseInfo = strings.Join(island.Fruits, ", ")
-				island.Fruits = nil
-			}
 			if len(island.Info) > 0 && fuzzy.PartialRatio(island.Info, info) > 80 ||
 				len(island.BaseInfo) > 0 && fuzzy.PartialRatio(island.BaseInfo, info) > 80 {
 				u := &User{}
@@ -534,10 +530,7 @@ type ACNHTurnipPricesBoardRecord struct {
 }
 
 //Equals 判等
-func (r *ACNHTurnipPricesBoardRecord) Equals(other *ACNHTurnipPricesBoardRecord) bool {
-	if r == nil || other == nil {
-		return false
-	}
+func (r ACNHTurnipPricesBoardRecord) Equals(other ACNHTurnipPricesBoardRecord) bool {
 	if r.UserID != other.UserID {
 		return false
 	}
@@ -549,8 +542,8 @@ func (r *ACNHTurnipPricesBoardRecord) Equals(other *ACNHTurnipPricesBoardRecord)
 
 //ACNHTurnipPricesBoard ACNH_TurnipPricesBoard
 type ACNHTurnipPricesBoard struct {
-	TopPriceRecords    []*ACNHTurnipPricesBoardRecord `firestore:"top_price_records"`
-	LowestPriceRecords []*ACNHTurnipPricesBoardRecord `firestore:"lowest_price_records"`
+	TopPriceRecords    []ACNHTurnipPricesBoardRecord `firestore:"top_price_records"`
+	LowestPriceRecords []ACNHTurnipPricesBoardRecord `firestore:"lowest_price_records"`
 }
 
 //Equals 判等

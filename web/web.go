@@ -231,7 +231,6 @@ func (w Web) export(c *gin.Context) {
 										"islandBaseInfo": axi.BaseInfo,
 										"timezone":       axi.Timezone.String(),
 										"info":           axi.Info,
-										"fruits":         axi.Fruits,
 										"hemisphere":     axi.Hemisphere,
 										"name":           axi.Name,
 										"owner":          axi.Owner,

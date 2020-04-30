@@ -9,9 +9,9 @@ import (
 
 // NSAccount Nintendo Switch account
 type NSAccount struct {
-	Name            string     `firestore:"name,omitempty"`
-	NameInsensitive string     `firestore:"name_insensitive,omitempty"`
-	FC              FriendCode `firestore:"friend_code,omitempty"`
+	Name            string     `firestore:"name"`
+	NameInsensitive string     `firestore:"name_insensitive"`
+	FC              FriendCode `firestore:"friend_code"`
 }
 
 // ParseAccountsFromString Parse FriendCode From String

@@ -252,15 +252,13 @@ func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.M
 
 	var weekPrices []string = make([]string, 13)
 	for _, p := range oldPriceHistory {
-		if p != nil {
-			var j = int(p.LocationDateTime().Weekday())
-			if j == 0 {
-				weekPrices[j] = strconv.Itoa(p.Price)
-			} else if p.LocationDateTime().Hour() < 12 {
-				weekPrices[j*2-1] = strconv.Itoa(p.Price)
-			} else {
-				weekPrices[j*2] = strconv.Itoa(p.Price)
-			}
+		var j = int(p.LocationDateTime().Weekday())
+		if j == 0 {
+			weekPrices[j] = strconv.Itoa(p.Price)
+		} else if p.LocationDateTime().Hour() < 12 {
+			weekPrices[j*2-1] = strconv.Itoa(p.Price)
+		} else {
+			weekPrices[j*2] = strconv.Itoa(p.Price)
 		}
 	}
 	var datePrice []string = make([]string, 7)
@@ -477,6 +475,7 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 	ctx := context.Background()
 	err = storage.UpdateDTCPrice(ctx, uid, int(price))
 	if err != nil {
+		_logger.Error().Err(err).Msg("update island last price")
 		if status.Code(err) == codes.NotFound {
 			return nil, Error{InnerError: err,
 				ReplyText: "请先登记你的岛屿狸。\n本bot 原本是为交换Nintendo Switch Friend Code而生。\n所以建议先/addfc 登记fc，再/addisland 登记岛屿，再/dtcj 发布价格。\n具体命令帮助请/help",
@@ -526,7 +525,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 	if residentUID > 0 {
 		uid = residentUID
 	}
-	var prices []*storage.PriceHistory
+	var prices []storage.TurnipPrice
 	var weekStartDateUTC = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
 	var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 0, 0, 0, 0, island.Timezone.Location())
 	var weekStartDate = weekStartDateLoc.UTC()
@@ -567,12 +566,24 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 		}
 		priceHistory = append(priceHistory, prices...)
 
+		client, err := firestore.NewClient(ctx, _projectID)
+		if err != nil {
+			_logger.Error().Err(err).Msg("set price history")
+			return nil, Error{InnerError: err,
+				ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
+			}
+		}
+		defer client.Close()
+
+		batch := client.Batch()
 		for _, ph := range priceHistory {
-			if err = ph.Set(ctx, uid); err != nil {
-				_logger.Error().Err(err).Msg("set price history")
-				return nil, Error{InnerError: err,
-					ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
-				}
+			docRef := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid)).Doc(fmt.Sprintf("%d", ph.Date.Unix()))
+			batch.Set(docRef, ph)
+		}
+		if _, err = batch.Commit(ctx); err != nil {
+			_logger.Error().Err(err).Msg("set price history")
+			return nil, Error{InnerError: err,
+				ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
 			}
 		}
 	}
@@ -631,7 +642,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 	return replyMessage, nil
 }
 
-func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, endDate time.Time) (priceHistory []*storage.PriceHistory, err error) {
+func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, endDate time.Time) (priceHistory []storage.TurnipPrice, err error) {
 	prices := strings.Split(strings.Trim(args, "/"), " ")
 	if len(prices) < 1 || len(prices) > 7 {
 		return nil, errors.New("wrong format")
@@ -664,19 +675,19 @@ func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, en
 	for i := 0; i < len(intPrice); i++ {
 		if i == 0 {
 			if intPrice[i] > 0 {
-				priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate.Add(5 * time.Hour), Price: intPrice[i], Timezone: islandTimezone})
+				priceHistory = append(priceHistory, storage.TurnipPrice{Date: startDate.Add(5 * time.Hour), Price: intPrice[i], Timezone: islandTimezone})
 			}
 			startDate = startDate.AddDate(0, 0, 1)
 		} else {
 			if i%2 == 1 {
 				startDate = startDate.Add(8 * time.Hour)
 				if intPrice[i] > 0 {
-					priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i], Timezone: islandTimezone})
+					priceHistory = append(priceHistory, storage.TurnipPrice{Date: startDate, Price: intPrice[i], Timezone: islandTimezone})
 				}
 			} else {
 				startDate = startDate.Add(4 * time.Hour)
 				if intPrice[i] > 0 {
-					priceHistory = append(priceHistory, &storage.PriceHistory{Date: startDate, Price: intPrice[i], Timezone: islandTimezone})
+					priceHistory = append(priceHistory, storage.TurnipPrice{Date: startDate, Price: intPrice[i], Timezone: islandTimezone})
 				}
 				startDate = startDate.Add(12 * time.Hour)
 			}
@@ -689,7 +700,7 @@ func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, en
  *	| Sun | Mon | Tue | Wed | Thu | Fri | Sat |
  *	| - | -/105 | -/- | -/- | -/- | -/- | -/- |
  *	未录入星期日数据 无法生成查询数据 */
-func formatWeekPrices(priceHistory []*storage.PriceHistory) (text string, err error) {
+func formatWeekPrices(priceHistory []storage.TurnipPrice) (text string, err error) {
 	var weekPrices []string = weekPriceStrings(priceHistory)
 	var datePrice []string = make([]string, 7)
 	datePrice[0] = weekPrices[0]
@@ -703,22 +714,20 @@ func formatWeekPrices(priceHistory []*storage.PriceHistory) (text string, err er
 		"\\| %s \\|", urlpath1, urlpath1, urlpath2, strings.Join(datePrice, " \\| ")), nil
 }
 
-func formatWeekPricesURL(priceHistory []*storage.PriceHistory) (text string) {
+func formatWeekPricesURL(priceHistory []storage.TurnipPrice) (text string) {
 	return fmt.Sprintf("https://ac-turnip.com/share?f=%s", strings.TrimRight(strings.Join(weekPriceStrings(priceHistory), "-"), ",-"))
 }
 
-func weekPriceStrings(priceHistory []*storage.PriceHistory) (weekPrices []string) {
+func weekPriceStrings(priceHistory []storage.TurnipPrice) (weekPrices []string) {
 	weekPrices = make([]string, 13)
 	for _, p := range priceHistory {
-		if p != nil {
-			var j = int(p.LocationDateTime().Weekday())
-			if j == 0 {
-				weekPrices[j] = strconv.Itoa(p.Price)
-			} else if p.LocationDateTime().Hour() < 12 {
-				weekPrices[j*2-1] = strconv.Itoa(p.Price)
-			} else {
-				weekPrices[j*2] = strconv.Itoa(p.Price)
-			}
+		var j = int(p.LocationDateTime().Weekday())
+		if j == 0 {
+			weekPrices[j] = strconv.Itoa(p.Price)
+		} else if p.LocationDateTime().Hour() < 12 {
+			weekPrices[j*2-1] = strconv.Itoa(p.Price)
+		} else {
+			weekPrices[j*2] = strconv.Itoa(p.Price)
 		}
 	}
 	return
@@ -891,8 +900,8 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 		lowestPriceCount = 5
 	}
 	l := len(priceUsers)
-	var topRecords = []*storage.ACNHTurnipPricesBoardRecord{}
-	var lowestRecords = []*storage.ACNHTurnipPricesBoardRecord{}
+	var topRecords = []storage.ACNHTurnipPricesBoardRecord{}
+	var lowestRecords = []storage.ACNHTurnipPricesBoardRecord{}
 	if localtime.Weekday() > 0 {
 		sort.Slice(priceUsers, func(i, j int) bool {
 			return priceUsers[i].Island.LastPrice.Price > priceUsers[j].Island.LastPrice.Price
@@ -928,10 +937,10 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 	}
 
 	for _, u := range topPriceUsers {
-		topRecords = append(topRecords, &storage.ACNHTurnipPricesBoardRecord{UserID: u.ID, Price: u.Island.LastPrice.Price})
+		topRecords = append(topRecords, storage.ACNHTurnipPricesBoardRecord{UserID: u.ID, Price: u.Island.LastPrice.Price})
 	}
 	for _, u := range lowestPriceUsers {
-		lowestRecords = append(lowestRecords, &storage.ACNHTurnipPricesBoardRecord{UserID: u.ID, Price: u.Island.LastPrice.Price})
+		lowestRecords = append(lowestRecords, storage.ACNHTurnipPricesBoardRecord{UserID: u.ID, Price: u.Island.LastPrice.Price})
 	}
 
 	newACNHTurnipPricesBoard := &storage.ACNHTurnipPricesBoard{TopPriceRecords: topRecords, LowestPriceRecords: lowestRecords}

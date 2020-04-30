@@ -56,8 +56,8 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 		logger.Error().Err(err).Msg("new NewStackdriverLoggingWriter failed")
 	} else {
 		logger = zerolog.New(sw)
-		_logger = logger
 	}
+	_logger = logger
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		logger.Fatal().Err(err).Send()
@@ -291,13 +291,11 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 						}
 					}
 					if foundOutDateMsg {
-						c.logger.Debug().Int("sentMsgs len:", len(sentMsgs)).Send()
 						for _, sentMsg := range sentMsgs[i:] {
 							c.TgBotClient.DeleteMessage(tgbotapi.NewDeleteMessage(sentMsg.ChatID, sentMsg.MsgID))
 						}
 						copy(sentMsgs, sentMsgs[i:])
 						sentMsgs = sentMsgs[:len(sentMsgs)-i]
-						c.logger.Debug().Int("sentMsgs len:", len(sentMsgs)).Send()
 					}
 				}
 				messageSendTime := message.Time()

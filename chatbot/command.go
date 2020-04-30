@@ -95,18 +95,22 @@ func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		replies, e := c(message)
 		if e != nil {
 			if e, ok := e.(Error); ok {
-				return nil, &Error{InnerError: fmt.Errorf("error occurred when running cmd: %s\n error is: %s", cmd, e.InnerError), ReplyText: e.ReplyText}
+				if e.InnerError != nil {
+					return nil, &Error{InnerError: fmt.Errorf("error occurred when running cmd: %s: error is: %w", cmd, e.InnerError), ReplyText: e.ReplyText}
+				}
 			}
-			return nil, &Error{InnerError: fmt.Errorf("error occurred when running cmd: %s\n error is: %s", cmd, e)}
+			return nil, &Error{InnerError: fmt.Errorf("error occurred when running cmd: %s: error is: %w", cmd, e)}
 		}
 		return replies, nil
 	} else if r.commandSuggest != nil {
 		replies, e := r.commandSuggest(message)
 		if e != nil {
 			if e, ok := e.(Error); ok {
-				return nil, &Error{InnerError: fmt.Errorf("error occurred when running cmd: /suggest\n error is: %s", e.InnerError), ReplyText: e.ReplyText}
+				if e.InnerError != nil {
+					return nil, &Error{InnerError: fmt.Errorf("error occurred when running cmd: /suggest: error is: %w", e.InnerError), ReplyText: e.ReplyText}
+				}
 			}
-			return nil, &Error{InnerError: fmt.Errorf("error occurred when running cmd: /suggest\n error is: %s", e)}
+			return nil, &Error{InnerError: fmt.Errorf("error occurred when running cmd: /suggest: error is: %w", e)}
 		}
 		return replies, nil
 	}
