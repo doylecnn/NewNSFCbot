@@ -302,8 +302,16 @@ func AddGroupIDToUserGroupIDs(ctx context.Context, userID int, groupID int64) (e
 	}
 	defer client.Close()
 
-	co := client.Doc(fmt.Sprintf("users/%d", userID))
-	_, err = co.Update(ctx, []firestore.Update{
+	userDocRef := client.Doc(fmt.Sprintf("users/%d", userID))
+	_, err = userDocRef.Get(ctx)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			logger.Info().Msg("user not found")
+			return nil
+		}
+		return
+	}
+	_, err = userDocRef.Update(ctx, []firestore.Update{
 		{Path: "groupids", Value: firestore.ArrayUnion(groupID)},
 	})
 	return

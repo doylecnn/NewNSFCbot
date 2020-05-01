@@ -67,7 +67,7 @@ func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	}
 	if groupID != 0 {
 		if lerr := storage.AddGroupIDToUserGroupIDs(ctx, message.From.ID, groupID); lerr != nil {
-			_logger.Error().Err(err).Msg("add groupid to user's groupids failed")
+			_logger.Error().Err(lerr).Msg("add groupid to user's groupids failed")
 		}
 		g, err := storage.GetGroup(ctx, groupID)
 		if err != nil && status.Code(err) != codes.NotFound {
