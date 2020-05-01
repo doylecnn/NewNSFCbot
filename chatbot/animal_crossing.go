@@ -261,12 +261,8 @@ func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.M
 			weekPrices[j*2] = strconv.Itoa(p.Price)
 		}
 	}
-	var datePrice []string = make([]string, 7)
-	datePrice[0] = weekPrices[0]
-	for i := 1; i < 13; i += 2 {
-		datePrice[(i+1)/2] = fmt.Sprintf("%s/%s", weekPrices[i], weekPrices[i+1])
-	}
-	weekpriceStr := strings.TrimFunc(strings.Join(datePrice, " "), func(r rune) bool { return r == ' ' || r == '/' })
+
+	weekpriceStr := strings.TrimFunc(strings.Join(weekPrices, ","), func(r rune) bool { return r == ' ' || r == ',' })
 	_, err = getWeeklyDTCPriceHistory(ctx, message, uid, weekpriceStr)
 	if err != nil {
 		_logger.Error().Err(err).Str("weekprice", weekpriceStr).Msg("updateweekprice error")
@@ -643,34 +639,17 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 }
 
 func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, endDate time.Time) (priceHistory []storage.TurnipPrice, err error) {
-	prices := strings.Split(strings.Trim(args, "/"), " ")
-	if len(prices) < 1 || len(prices) > 7 {
-		return nil, errors.New("wrong format")
-	}
-	if strings.Contains(prices[0], "/") {
+	prices := strings.Split(strings.Trim(args, ","), ",")
+	if len(prices) < 1 || len(prices) > 13 {
 		return nil, errors.New("wrong format")
 	}
 	var intPrice []int
-	ip, err := strconv.Atoi(prices[0])
-	if err != nil {
-		return nil, errors.New("wrong format")
-	}
-	intPrice = append(intPrice, ip)
-	l1 := len(prices[1:])
-	for i, price := range prices[1:] {
-		ps := strings.Split(price, "/")
-		l2 := len(ps)
-		if l2 > 2 || (i != l1-1 && l2 == 1) {
+	for _, tp := range prices {
+		ip, err := strconv.Atoi(strings.TrimSpace(tp))
+		if ip < 0 || ip > 999 || err != nil {
 			return nil, errors.New("wrong format")
 		}
-		for _, p := range ps {
-			ip, err = strconv.Atoi(p)
-			if ip < 0 || ip > 999 || err != nil {
-				return nil, errors.New("wrong format")
-
-			}
-			intPrice = append(intPrice, ip)
-		}
+		intPrice = append(intPrice, ip)
 	}
 	for i := 0; i < len(intPrice); i++ {
 		if i == 0 {
