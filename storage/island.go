@@ -50,7 +50,7 @@ type Island struct {
 	Info             string        `firestore:"Info"`
 	OnBoardQueueID   string        `firestore:"OnBoardQueueID"`
 	Timezone         Timezone      `filestore:"timezone"`
-	LastPrice        *TurnipPrice  `firestore:"LastPrice,omitempty"`
+	LastPrice        TurnipPrice   `firestore:"LastPrice"`
 	Owner            string        `firestore:"owner"`
 	OwnerInsensitive string        `firestore:"owner_insensitive"`
 	ResidentUID      int           `firestore:"resident_userid,omitempty"` // 指向真正的岛主
@@ -319,7 +319,7 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 		}
 	}
 	tp := TurnipPrice{Date: now, Price: price, Timezone: island.Timezone}
-	island.LastPrice = &tp
+	island.LastPrice = tp
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		err = fmt.Errorf("firestore.NewClient failed: %w", err)

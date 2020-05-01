@@ -572,10 +572,14 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 		defer client.Close()
 
 		batch := client.Batch()
+		var ph storage.TurnipPrice
 		for _, ph := range priceHistory {
 			docRef := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid)).Doc(fmt.Sprintf("%d", ph.Date.Unix()))
 			batch.Set(docRef, ph)
 		}
+		island.LastPrice = ph
+		islandRef := client.Doc(island.Path)
+		batch.Update(islandRef, []firestore.Update{{Path: "LastPrice", Value: ph}})
 		if _, err = batch.Commit(ctx); err != nil {
 			_logger.Error().Err(err).Msg("set price history")
 			return nil, Error{InnerError: err,
