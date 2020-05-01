@@ -56,11 +56,10 @@ func (sw *StackdriverLoggingWriter) WriteLevel(level zerolog.Level, p []byte) (i
 		sw.logger.Log(logging.Entry{Payload: map[string]string{"stack trace": string(sw.getStackTrace())}, Severity: severity})
 		var m map[string]interface{} = make(map[string]interface{})
 		if jsonUnmarshalError := json.Unmarshal(p, &m); jsonUnmarshalError == nil {
-			sw.errorClient.Report(errorreporting.Entry{
+			sw.errorClient.ReportSync(context.Background(), errorreporting.Entry{
 				Error: errors.New(m["error"].(string)),
 				Stack: sw.getStackTrace(),
 			})
-			sw.errorClient.Flush()
 		} else {
 			sw.logger.Log(logging.Entry{Payload: rawJSON(p), Severity: severity})
 			sw.logger.Log(logging.Entry{Payload: map[string]string{"error": fmt.Sprintf("errorreporting failed. error: %v", jsonUnmarshalError),

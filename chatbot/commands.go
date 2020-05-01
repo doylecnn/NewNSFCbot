@@ -50,9 +50,9 @@ func cmdAddFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 			username = fmt.Sprintf("%d", message.From.ID)
 		}
 		if !message.Chat.IsPrivate() {
-			u = &storage.User{ID: message.From.ID, Name: username, NSAccounts: accounts, GroupIDs: []int64{groupID}}
+			u = storage.User{ID: message.From.ID, Name: username, NSAccounts: accounts, GroupIDs: []int64{groupID}}
 		} else {
-			u = &storage.User{ID: message.From.ID, Name: username, NSAccounts: accounts}
+			u = storage.User{ID: message.From.ID, Name: username, NSAccounts: accounts}
 		}
 		u.NameInsensitive = strings.ToLower(u.Name)
 		if err = u.Set(ctx); err != nil {
@@ -159,15 +159,16 @@ func cmdDelFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 
 func cmdDeleteMe(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
 	ctx := context.Background()
-	if u, err := storage.GetUser(ctx, message.From.ID, 0); err != nil {
+	var u storage.User
+	if u, err = storage.GetUser(ctx, message.From.ID, 0); err != nil {
 		return nil, Error{InnerError: err,
 			ReplyText: fmt.Sprintf("删除信息时出错: %v", err),
 		}
-	} else if u != nil {
-		if err = u.Delete(ctx); err != nil {
-			_logger.Error().Err(err).Send()
-		}
 	}
+	if err = u.Delete(ctx); err != nil {
+		_logger.Error().Err(err).Send()
+	}
+
 	return []*tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
@@ -246,7 +247,7 @@ func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 	}
 	args := strings.TrimSpace(message.CommandArguments())
 	ctx := context.Background()
-	var us []*storage.User
+	var us []storage.User
 	if message.ReplyToMessage != nil {
 		if message.ReplyToMessage.From.ID == message.From.ID {
 			return cmdMyFC(message)
@@ -263,9 +264,7 @@ func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 				ReplyText: "查询记录时出错狸",
 			}
 		}
-		if u != nil {
-			us = []*storage.User{u}
-		}
+		us = []storage.User{u}
 	} else if len(args) > 1 && strings.HasPrefix(args, "@") {
 		if args[1:] == message.From.UserName {
 			return cmdMyFC(message)

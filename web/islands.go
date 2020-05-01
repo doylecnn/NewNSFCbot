@@ -38,7 +38,7 @@ func (w Web) Islands(c *gin.Context) {
 				c.AbortWithError(http.StatusInternalServerError, err)
 				return
 			}
-			var users map[int]*storage.User = make(map[int]*storage.User)
+			var users map[int]storage.User = make(map[int]storage.User)
 			for _, gid := range u.GroupIDs {
 				us, err := storage.GetGroupUsers(ctx, gid)
 				if err != nil {
@@ -77,7 +77,7 @@ func (w Web) Islands(c *gin.Context) {
 					}
 				}
 				user.Island = island
-				haveIslandUsers = append(haveIslandUsers, *user)
+				haveIslandUsers = append(haveIslandUsers, user)
 			}
 			c.HTML(200, "islands.html", gin.H{
 				"uid":          userID,

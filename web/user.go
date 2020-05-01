@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"strconv"
 
@@ -31,8 +30,6 @@ func (w Web) User(c *gin.Context) {
 				user, err := storage.GetUser(ctx, int(uid), 0)
 				if err != nil {
 					c.AbortWithError(http.StatusInternalServerError, err)
-				} else if user == nil {
-					c.AbortWithError(http.StatusInternalServerError, errors.New("not found user by userid"))
 				} else {
 					island, _, err := user.GetAnimalCrossingIsland(ctx)
 					if err != nil {

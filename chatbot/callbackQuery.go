@@ -965,7 +965,7 @@ func callbackQueryManageFriendCodes(query *tgbotapi.CallbackQuery) (callbackConf
 	if query.Data == "/manageFriendCodes" {
 		uid := query.From.ID
 		ctx := context.Background()
-		var u *storage.User
+		var u storage.User
 		u, err = storage.GetUser(ctx, uid, 0)
 		if err != nil && status.Code(err) != codes.NotFound {
 			tgbot.Send(&tgbotapi.MessageConfig{
@@ -1039,7 +1039,7 @@ func callbackQueryManageFriendCodes(query *tgbotapi.CallbackQuery) (callbackConf
 			}, nil
 		}
 		ctx := context.Background()
-		var u *storage.User
+		var u storage.User
 		u, err = storage.GetUser(ctx, uid, 0)
 		if err != nil && status.Code(err) != codes.NotFound {
 			_logger.Error().Err(err).Msg("query users Freind Code")
@@ -1107,7 +1107,7 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 		}, nil
 	}
 	ctx := context.Background()
-	var u *storage.User
+	var u storage.User
 	u, err = storage.GetUser(ctx, uid, 0)
 	if err != nil && status.Code(err) != codes.NotFound {
 		_logger.Error().Err(err).Msg("query users Freind Code")

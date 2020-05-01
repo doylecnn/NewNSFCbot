@@ -157,7 +157,7 @@ func (u *User) DeleteNSAccountByIndex(ctx context.Context, idx int) (err error) 
 }
 
 // GetUser by userid
-func GetUser(ctx context.Context, userID int, groupID int64) (user *User, err error) {
+func GetUser(ctx context.Context, userID int, groupID int64) (user User, err error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
@@ -169,11 +169,11 @@ func GetUser(ctx context.Context, userID int, groupID int64) (user *User, err er
 		if err != nil && status.Code(err) != codes.NotFound {
 			logger.Warn().Err(err).Msg("Failed when get user")
 		}
-		return nil, err
+		return
 	}
-	user = &User{}
-	if err = dsnap.DataTo(user); err != nil {
-		return nil, err
+	user = User{}
+	if err = dsnap.DataTo(&user); err != nil {
+		return
 	}
 	user.Path = fmt.Sprintf("users/%d", user.ID)
 	if groupID == 0 {
@@ -188,7 +188,7 @@ func GetUser(ctx context.Context, userID int, groupID int64) (user *User, err er
 }
 
 // GetAllUsers get all users
-func GetAllUsers(ctx context.Context) (users []*User, err error) {
+func GetAllUsers(ctx context.Context) (users []User, err error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
@@ -204,28 +204,26 @@ func GetAllUsers(ctx context.Context) (users []*User, err error) {
 		if err != nil {
 			return nil, err
 		}
-		u := &User{}
-		if err = doc.DataTo(u); err != nil {
+		u := User{}
+		if err = doc.DataTo(&u); err != nil {
 			logger.Warn().Err(err).Send()
 			return nil, err
 		}
-		if u != nil {
-			u.Path = fmt.Sprintf("users/%d", u.ID)
-			users = append(users, u)
-		}
+		u.Path = fmt.Sprintf("users/%d", u.ID)
+		users = append(users, u)
 	}
 	return users, nil
 }
 
 // GetUsersByName get users by username
-func GetUsersByName(ctx context.Context, username string, groupID int64) (users []*User, err error) {
+func GetUsersByName(ctx context.Context, username string, groupID int64) (users []User, err error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
 	}
 	defer client.Close()
 
-	users = []*User{}
+	users = []User{}
 	iter := client.Collection("users").Where("name_insensitive", "==", strings.ToLower(username)).Where("groupids", "array-contains", groupID).Documents(ctx)
 	for {
 		doc, err := iter.Next()
@@ -235,28 +233,26 @@ func GetUsersByName(ctx context.Context, username string, groupID int64) (users 
 		if err != nil {
 			return nil, err
 		}
-		u := &User{}
-		if err = doc.DataTo(u); err != nil {
+		u := User{}
+		if err = doc.DataTo(&u); err != nil {
 			logger.Warn().Err(err).Msg("GetUsersByName")
 			continue
 		}
-		if u != nil {
-			u.Path = fmt.Sprintf("users/%d", u.ID)
-			users = append(users, u)
-		}
+		u.Path = fmt.Sprintf("users/%d", u.ID)
+		users = append(users, u)
 	}
 	return users, nil
 }
 
 // GetUsersByNSAccountName get users by Nintendo Account name
-func GetUsersByNSAccountName(ctx context.Context, username string, groupID int64) (users []*User, err error) {
+func GetUsersByNSAccountName(ctx context.Context, username string, groupID int64) (users []User, err error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
 	}
 	defer client.Close()
 
-	users = []*User{}
+	users = []User{}
 	iter := client.Collection("users").Where("groupids", "array-contains", groupID).Documents(ctx)
 	for {
 		userDocSnap, err := iter.Next()
@@ -267,17 +263,15 @@ func GetUsersByNSAccountName(ctx context.Context, username string, groupID int64
 			return nil, err
 		}
 		if userDocSnap.Exists() {
-			u := &User{}
-			if err = userDocSnap.DataTo(u); err != nil {
+			u := User{}
+			if err = userDocSnap.DataTo(&u); err != nil {
 				logger.Warn().Err(err).Msg("GetUsersByNSAccountName")
 				continue
 			}
-			if u != nil {
-				for _, a := range u.NSAccounts {
-					if a.NameInsensitive == strings.ToLower(username) {
-						u.Path = fmt.Sprintf("users/%d", u.ID)
-						users = append(users, u)
-					}
+			for _, a := range u.NSAccounts {
+				if a.NameInsensitive == strings.ToLower(username) {
+					u.Path = fmt.Sprintf("users/%d", u.ID)
+					users = append(users, u)
 				}
 			}
 		}
@@ -332,7 +326,7 @@ func (u *User) GetAnimalCrossingIsland(ctx context.Context) (island *Island, res
 }
 
 // GetUsersByAnimalCrossingIslandName get users by island name
-func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupID int64) (users []*User, err error) {
+func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupID int64) (users []User, err error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -373,18 +367,16 @@ func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupI
 				}
 			}
 			if island.NameInsensitive == name || island.NameInsensitive == name+"岛" {
-				u := &User{}
-				if err = doc.DataTo(u); err != nil {
+				u := User{}
+				if err = doc.DataTo(&u); err != nil {
 					logger.Error().Err(err).Msg("error when DataTo user")
 					continue
 				}
-				if u != nil {
-					island.Path = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
-					island.LastPrice.Timezone = island.Timezone
-					u.Island = &island
-					u.Path = fmt.Sprintf("users/%d", u.ID)
-					users = append(users, u)
-				}
+				island.Path = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
+				island.LastPrice.Timezone = island.Timezone
+				u.Island = &island
+				u.Path = fmt.Sprintf("users/%d", u.ID)
+				users = append(users, u)
 			}
 		}
 	}
@@ -392,7 +384,7 @@ func GetUsersByAnimalCrossingIslandName(ctx context.Context, name string, groupI
 }
 
 // GetUsersByAnimalCrossingIslandOwnerName get users by island owner name
-func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string, groupID int64) (users []*User, err error) {
+func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string, groupID int64) (users []User, err error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -424,18 +416,16 @@ func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string, g
 				continue
 			}
 			if island.OwnerInsensitive == strings.ToLower(name) {
-				u := &User{}
-				if err = doc.DataTo(u); err != nil {
+				u := User{}
+				if err = doc.DataTo(&u); err != nil {
 					logger.Error().Err(err).Msg("error when DataTo user")
 					continue
 				}
-				if u != nil {
-					island.Path = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
-					island.LastPrice.Timezone = island.Timezone
-					u.Island = &island
-					u.Path = fmt.Sprintf("users/%d", u.ID)
-					users = append(users, u)
-				}
+				island.Path = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
+				island.LastPrice.Timezone = island.Timezone
+				u.Island = &island
+				u.Path = fmt.Sprintf("users/%d", u.ID)
+				users = append(users, u)
 			}
 		}
 	}
@@ -443,7 +433,7 @@ func GetUsersByAnimalCrossingIslandOwnerName(ctx context.Context, name string, g
 }
 
 // GetUsersByAnimalCrossingIslandInfo get users by island open info
-func GetUsersByAnimalCrossingIslandInfo(ctx context.Context, info string, groupID int64) (users []*User, err error) {
+func GetUsersByAnimalCrossingIslandInfo(ctx context.Context, info string, groupID int64) (users []User, err error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -476,18 +466,16 @@ func GetUsersByAnimalCrossingIslandInfo(ctx context.Context, info string, groupI
 			}
 			if len(island.Info) > 0 && fuzzy.PartialRatio(island.Info, info) > 80 ||
 				len(island.BaseInfo) > 0 && fuzzy.PartialRatio(island.BaseInfo, info) > 80 {
-				u := &User{}
-				if err = doc.DataTo(u); err != nil {
+				u := User{}
+				if err = doc.DataTo(&u); err != nil {
 					logger.Error().Err(err).Msg("error when DataTo user")
 					continue
 				}
-				if u != nil {
-					island.Path = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
-					island.LastPrice.Timezone = island.Timezone
-					u.Island = &island
-					u.Path = fmt.Sprintf("users/%d", u.ID)
-					users = append(users, u)
-				}
+				island.Path = fmt.Sprintf("users/%d/games/animal_crossing", u.ID)
+				island.LastPrice.Timezone = island.Timezone
+				u.Island = &island
+				u.Path = fmt.Sprintf("users/%d", u.ID)
+				users = append(users, u)
 			}
 		}
 	}
@@ -495,7 +483,7 @@ func GetUsersByAnimalCrossingIslandInfo(ctx context.Context, info string, groupI
 }
 
 // GetGroupUsers get group users
-func GetGroupUsers(ctx context.Context, groupID int64) (users []*User, err error) {
+func GetGroupUsers(ctx context.Context, groupID int64) (users []User, err error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
@@ -511,14 +499,12 @@ func GetGroupUsers(ctx context.Context, groupID int64) (users []*User, err error
 		if err != nil {
 			return nil, err
 		}
-		u := &User{}
-		if err = doc.DataTo(u); err != nil {
+		u := User{}
+		if err = doc.DataTo(&u); err != nil {
 			return nil, err
 		}
-		if u != nil {
-			u.Path = fmt.Sprintf("users/%d", u.ID)
-			users = append(users, u)
-		}
+		u.Path = fmt.Sprintf("users/%d", u.ID)
+		users = append(users, u)
 	}
 	return users, nil
 }
@@ -585,7 +571,7 @@ type Group struct {
 }
 
 // GetAllGroups get all groups
-func GetAllGroups(ctx context.Context) (groups []*Group, err error) {
+func GetAllGroups(ctx context.Context) (groups []Group, err error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
@@ -601,14 +587,12 @@ func GetAllGroups(ctx context.Context) (groups []*Group, err error) {
 		if err != nil {
 			return nil, err
 		}
-		g := &Group{}
-		if err = doc.DataTo(g); err != nil {
+		g := Group{}
+		if err = doc.DataTo(&g); err != nil {
 			logger.Warn().Err(err).Send()
 			return nil, err
 		}
-		if g != nil {
-			groups = append(groups, g)
-		}
+		groups = append(groups, g)
 	}
 	return groups, nil
 }

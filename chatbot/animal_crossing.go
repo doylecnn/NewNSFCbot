@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -65,14 +66,14 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 			username = message.From.FirstName + " " + message.From.LastName
 		}
 		if groupID != 0 {
-			u = &storage.User{
+			u = storage.User{
 				ID:              message.From.ID,
 				Name:            username,
 				NameInsensitive: strings.ToLower(username),
 				GroupIDs:        []int64{groupID},
 			}
 		} else {
-			u = &storage.User{
+			u = storage.User{
 				ID:              message.From.ID,
 				Name:            username,
 				NameInsensitive: strings.ToLower(username),
@@ -762,34 +763,26 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 	if localtime.Weekday() == 0 {
 		var lowestDTCPrices []string
 		for i, u := range lowestPriceUsers {
-			if u != nil {
-				lowestDTCPrices = append(lowestDTCPrices, formatIslandDTCPrice(u, i+1))
-			}
+			lowestDTCPrices = append(lowestDTCPrices, formatIslandDTCPrice(u, i+1))
 		}
 		replyText = fmt.Sprintf("*今日低进价（前 %d）：*\n%s", len(lowestDTCPrices), strings.Join(lowestDTCPrices, "\n"))
 		if len(lowestPriceUsers) > 0 {
 			var dtcPrices []string
 			for i, u := range topPriceUsers {
-				if u != nil {
-					dtcPrices = append(dtcPrices, formatIslandDTCPrice(u, i+1))
-				}
+				dtcPrices = append(dtcPrices, formatIslandDTCPrice(u, i+1))
 			}
 			replyText += fmt.Sprintf("\n*今日最高进价：*\n%s", strings.Join(dtcPrices, "\n"))
 		}
 	} else {
 		var dtcPrices []string
 		for i, u := range topPriceUsers {
-			if u != nil {
-				dtcPrices = append(dtcPrices, formatIslandDTCPrice(u, i+1))
-			}
+			dtcPrices = append(dtcPrices, formatIslandDTCPrice(u, i+1))
 		}
 		replyText = fmt.Sprintf("*今日高卖价（前 %d）：*\n%s", len(dtcPrices), strings.Join(dtcPrices, "\n"))
 		if len(lowestPriceUsers) > 0 {
 			var lowestDTCPrices []string
 			for i, u := range lowestPriceUsers {
-				if u != nil {
-					lowestDTCPrices = append(lowestDTCPrices, formatIslandDTCPrice(u, i+1))
-				}
+				lowestDTCPrices = append(lowestDTCPrices, formatIslandDTCPrice(u, i+1))
 			}
 			replyText += fmt.Sprintf("\n*今日最低卖价：*\n%s", strings.Join(lowestDTCPrices, "\n"))
 		}
@@ -809,7 +802,7 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 		nil
 }
 
-func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, localtime time.Time) (topPriceUsers []*storage.User, lowestPriceUsers []*storage.User, changed bool, err error) {
+func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, localtime time.Time) (topPriceUsers []storage.User, lowestPriceUsers []storage.User, changed bool, err error) {
 	group, err := storage.GetGroup(ctx, chatID)
 	if err != nil {
 		_logger.Error().Err(err).Msg("GetGroup")
@@ -821,7 +814,7 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 		return nil, nil, false, err
 	}
 
-	var priceUsers []*storage.User
+	var priceUsers []storage.User
 	for _, u := range users {
 		island, residentUID, err := u.GetAnimalCrossingIsland(ctx)
 		if err != nil || island == nil {
@@ -937,7 +930,7 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 	return
 }
 
-func formatIslandDTCPrice(user *storage.User, rank int) string {
+func formatIslandDTCPrice(user storage.User, rank int) string {
 	if !strings.HasSuffix(user.Island.Name, "岛") {
 		user.Island.Name += "岛"
 	}
@@ -985,30 +978,52 @@ func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	var usermap map[string]struct{} = make(map[string]struct{})
 	var groupID int64 = message.Chat.ID
 	ctx := context.Background()
-	foundUsersByUserName, err := storage.GetUsersByName(ctx, query, groupID)
-	if err != nil && status.Code(err) != codes.NotFound {
-		_logger.Error().Err(err).Msg("error in GetUsersByName")
-	}
+	var wg sync.WaitGroup
+	wg.Add(5)
+	var foundUsersByUserName []storage.User
+	go func() {
+		foundUsersByUserName, err = storage.GetUsersByName(ctx, query, groupID)
+		if err != nil && status.Code(err) != codes.NotFound {
+			_logger.Error().Err(err).Msg("error in GetUsersByName")
+		}
+		wg.Done()
+	}()
+	var foundUsersByNSAccountName []storage.User
+	go func() {
+		foundUsersByNSAccountName, err = storage.GetUsersByNSAccountName(ctx, query, groupID)
+		if err != nil && status.Code(err) != codes.NotFound {
+			_logger.Error().Err(err).Msg("error in GetUsersByNSAccountName")
+		}
+		wg.Done()
+	}()
 
-	foundUsersByNSAccountName, err := storage.GetUsersByNSAccountName(ctx, query, groupID)
-	if err != nil && status.Code(err) != codes.NotFound {
-		_logger.Error().Err(err).Msg("error in GetUsersByNSAccountName")
-	}
+	var foundUsersByIslandName []storage.User
+	go func() {
+		foundUsersByIslandName, err = storage.GetUsersByAnimalCrossingIslandName(ctx, query, groupID)
+		if err != nil && status.Code(err) != codes.NotFound {
+			_logger.Error().Err(err).Msg("error in GetUsersByAnimalCrossingIslandName")
+		}
+		wg.Done()
+	}()
 
-	foundUsersByIslandName, err := storage.GetUsersByAnimalCrossingIslandName(ctx, query, groupID)
-	if err != nil && status.Code(err) != codes.NotFound {
-		_logger.Error().Err(err).Msg("error in GetUsersByAnimalCrossingIslandName")
-	}
+	var foundUserByOwnerName []storage.User
+	go func() {
+		foundUserByOwnerName, err = storage.GetUsersByAnimalCrossingIslandOwnerName(ctx, query, groupID)
+		if err != nil && status.Code(err) != codes.NotFound {
+			_logger.Error().Err(err).Msg("error in GetUsersByAnimalCrossingIslandOwnerName")
+		}
+		wg.Done()
+	}()
 
-	foundUserByOwnerName, err := storage.GetUsersByAnimalCrossingIslandOwnerName(ctx, query, groupID)
-	if err != nil && status.Code(err) != codes.NotFound {
-		_logger.Error().Err(err).Msg("error in GetUsersByAnimalCrossingIslandOwnerName")
-	}
-
-	foundUserByIslandInfo, err := storage.GetUsersByAnimalCrossingIslandInfo(ctx, query, groupID)
-	if err != nil && status.Code(err) != codes.NotFound {
-		_logger.Error().Err(err).Msg("error in GetUsersByAnimalCrossingIslandOpenInfo")
-	}
+	var foundUserByIslandInfo []storage.User
+	go func() {
+		foundUserByIslandInfo, err = storage.GetUsersByAnimalCrossingIslandInfo(ctx, query, groupID)
+		if err != nil && status.Code(err) != codes.NotFound {
+			_logger.Error().Err(err).Msg("error in GetUsersByAnimalCrossingIslandOpenInfo")
+		}
+		wg.Done()
+	}()
+	wg.Wait()
 
 	var replyText string
 	if len(foundUserByIslandInfo) > 0 {
@@ -1056,7 +1071,7 @@ func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 		nil
 }
 
-func formatUserSearchResult(ctx context.Context, usermap map[string]struct{}, users []*storage.User) (replyMessage string) {
+func formatUserSearchResult(ctx context.Context, usermap map[string]struct{}, users []storage.User) (replyMessage string) {
 	var rst []string
 	for _, u := range users {
 		if _, ok := usermap[u.Name]; ok {
@@ -1099,7 +1114,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 	}
 	args := strings.TrimSpace(message.CommandArguments())
 	ctx := context.Background()
-	var us []*storage.User
+	var us []storage.User
 	if message.ReplyToMessage != nil && message.ReplyToMessage.From.ID != message.From.ID {
 		groupID := message.Chat.ID
 		u, err := storage.GetUser(ctx, message.ReplyToMessage.From.ID, groupID)
@@ -1113,9 +1128,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 				ReplyText: "查询记录时出错狸",
 			}
 		}
-		if u != nil {
-			us = []*storage.User{u}
-		}
+		us = []storage.User{u}
 	} else if len(args) > 1 && strings.HasPrefix(args, "@") && args[1:] != message.From.UserName {
 		groupID := message.Chat.ID
 		us, err = storage.GetUsersByName(ctx, args[1:], groupID)
@@ -1150,7 +1163,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 			}
 		}
 		if chatmember.IsMember() || chatmember.IsCreator() || chatmember.IsAdministrator() {
-			user = u
+			user = &u
 			break
 		}
 	}
