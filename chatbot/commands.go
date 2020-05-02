@@ -445,7 +445,7 @@ func cmdComments(message *tgbotapi.Message) (replyMessages []tgbotapi.MessageCon
 			ChatID:           message.Chat.ID,
 			ReplyToMessageID: message.MessageID,
 		},
-		Text:                  "@NS_FC_bot 项目在[github](https://github.com/doylecnn/newnsfcbot)上开源\n留言成功。感谢您使用 @NS_FC_bot。",
+		Text:                  "@NS\\_FC\\_bot 项目在[github](https://github.com/doylecnn/newnsfcbot)上开源\n留言成功。感谢您使用 @NS\\_FC\\_bot。",
 		ParseMode:             "MarkdownV2",
 		DisableWebPagePreview: true,
 	}}, nil
@@ -461,7 +461,7 @@ func cmdDonate(message *tgbotapi.Message) (replyMessages []tgbotapi.MessageConfi
 			ReplyToMessageID: message.MessageID,
 			ReplyMarkup:      tgbotapi.NewInlineKeyboardMarkup(alipayButton, wechatButton, paypalButton),
 		},
-		Text:                  "@NS_FC_bot 项目在[github](https://github.com/doylecnn/newnsfcbot)上开源\n感谢您的支持。请选择下列支付方式。",
+		Text:                  "@NS\\_FC\\_bot 项目在[github](https://github.com/doylecnn/newnsfcbot)上开源\n感谢您的支持。请选择下列支付方式。",
 		ParseMode:             "MarkdownV2",
 		DisableWebPagePreview: true,
 	}}, nil
