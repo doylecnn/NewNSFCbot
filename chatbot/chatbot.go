@@ -83,6 +83,8 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 	/gj 大头菜最新价格，通常只显示同群中价格从高到低前5名
 	/islands 提供网页展示本bot 记录的所有动森岛屿信息
 	/login 登录到本bot 的web 界面，更方便查看信息
+	/comment 对 @NS_FC_bot 提建议
+	/donate 捐助 @NS_FC_bot 的开发/维护
 	/help 查看本帮助信息`
 
 	var botHelpText = `大部分指令可以通过私聊 @NS_FC_bot 使用。` + commandsText
@@ -133,8 +135,8 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 	_domain = domain
 	c := ChatBot{TgBotClient: bot, route: router, projectID: projectID, appID: appID, token: token, logger: logger, logwriter: sw}
 
-	router.HandleFunc("help", func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
-		return []*tgbotapi.MessageConfig{{
+	router.HandleFunc("help", func(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -153,6 +155,8 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 	router.HandleFunc("fc", cmdSearchFC)
 	router.HandleFunc("fclist", cmdListFriendCodes)
 	//router.HandleFunc("deleteme", cmdDeleteMe)
+	router.HandleFunc("comment", cmdComments)
+	router.HandleFunc("donate", cmdDonate)
 
 	// Animal Crossing: New Horizons
 	router.HandleFunc("islands", cmdListIslands)
@@ -381,7 +385,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 						}
 					}
 				} else {
-					if canEditSentMsg && len(replyMessages) == 1 && replyMessages[0] != nil {
+					if canEditSentMsg && len(replyMessages) == 1 {
 						if l := len(replyMessages[0].Text); l > 0 {
 							fm := tgbotapi.EditMessageTextConfig{
 								BaseEdit: tgbotapi.BaseEdit{
@@ -397,7 +401,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 						for _, replyMessage := range replyMessages {
 							var text = replyMessage.Text
 							l := len(text)
-							if replyMessage != nil && l > 0 {
+							if l > 0 {
 								if l > 4096 {
 									offset := 0
 									for l > 4096 {
@@ -423,7 +427,7 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 										}
 									}
 								} else {
-									sentM, err := c.TgBotClient.Send(*replyMessage)
+									sentM, err := c.TgBotClient.Send(replyMessage)
 									if err != nil {
 										c.logger.Error().Err(err).Str("message", replyMessage.Text).Msg("send message failed")
 									} else if replyMessage.ChatID == message.Chat.ID && !message.Chat.IsPrivate() {

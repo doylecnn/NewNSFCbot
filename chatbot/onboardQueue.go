@@ -14,11 +14,11 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
-func cmdStart(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdStart(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	if !message.Chat.IsPrivate() {
 		return
 	}
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID: message.Chat.ID,
 		},
@@ -43,7 +43,7 @@ func cmdStart(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	}}, nil
 }
 
-func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdMyQueue(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	if !message.Chat.IsPrivate() {
 		return
 	}
@@ -61,7 +61,7 @@ func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 		}
 	}
 	if len(island.OnBoardQueueID) == 0 {
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID: message.Chat.ID,
 			},
@@ -71,7 +71,7 @@ func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 	queue, err := island.GetOnboardQueue(ctx)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
-			return []*tgbotapi.MessageConfig{{
+			return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID: message.Chat.ID,
 				},
@@ -93,7 +93,7 @@ func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 		}
 		defer client.Close()
 		queue.Delete(ctx, client)
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID: message.Chat.ID,
 			},
@@ -110,7 +110,7 @@ func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 		tgbotapi.NewInlineKeyboardRow(nextBtn))
 	var replyText = fmt.Sprintf("队列已创建成功，密码：%s\n请使用分享按钮选择要分享排队的群/朋友\n*选择群组后请等待 telegram 弹出分享提示后点击提示！*\n/updatepassword 新密码 更新密码\n/dismiss 立即解散队列\n/myqueue 列出创建的队列\n*请使用下面的按钮操作*", queue.Password)
 
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -123,13 +123,13 @@ func cmdMyQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 		nil
 }
 
-func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	if !message.Chat.IsPrivate() {
 		return
 	}
 	password := message.Text
 	if len(password) != 5 {
-		return []*tgbotapi.MessageConfig{
+		return []tgbotapi.MessageConfig{
 			{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID: message.Chat.ID,
@@ -159,7 +159,7 @@ func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 		}
 	}
 	if len(island.OnBoardQueueID) == 0 {
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID: message.Chat.ID,
 			},
@@ -169,7 +169,7 @@ func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 	queue, err := island.GetOnboardQueue(ctx)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
-			return []*tgbotapi.MessageConfig{{
+			return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID: message.Chat.ID,
 				},
@@ -192,7 +192,7 @@ func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 	if queue.Dismissed {
 		defer client.Close()
 		queue.Delete(ctx, client)
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID: message.Chat.ID,
 			},
@@ -216,7 +216,7 @@ func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 		tgbotapi.NewInlineKeyboardRow(nextBtn))
 	var replyText = fmt.Sprintf("队列已创建成功，密码：%s\n请使用分享按钮选择要分享排队的群/朋友\n*选择群组后请等待 telegram 弹出分享提示后点击提示！*\n/dismiss 立即解散队列\n/myqueue 列出自己创建的队列\n*请使用下面的按钮操作*", queue.Password)
 	tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(message.Chat.ID, message.ReplyToMessage.MessageID))
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -233,7 +233,7 @@ func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 func notifyNewPassword(queue *storage.OnboardQueue) {
 	updatePasswordText := fmt.Sprintf("岛主更新了密码，新密码如下：\n%s", queue.Password)
 	for _, p := range queue.Landed {
-		_, err := tgbot.Send(&tgbotapi.MessageConfig{
+		_, err := tgbot.Send(tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:      int64(p.UID),
 				ReplyMarkup: tgbotapi.ForceReply{ForceReply: true, Selective: true},
@@ -242,7 +242,7 @@ func notifyNewPassword(queue *storage.OnboardQueue) {
 		})
 		if err != nil {
 			_logger.Error().Err(err).Msg("send new password failed")
-			tgbot.Send(&tgbotapi.MessageConfig{
+			tgbot.Send(tgbotapi.MessageConfig{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:      int64(queue.OwnerID),
 					ReplyMarkup: tgbotapi.ForceReply{ForceReply: true, Selective: true},
@@ -253,7 +253,7 @@ func notifyNewPassword(queue *storage.OnboardQueue) {
 	}
 }
 
-func cmdJoinedQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdJoinedQueue(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	if !message.Chat.IsPrivate() {
 		return
 	}
@@ -283,7 +283,7 @@ func cmdJoinedQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	}
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
 
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:      uid,
 			ReplyMarkup: replyMarkup,
@@ -292,11 +292,11 @@ func cmdJoinedQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	}}, nil
 }
 
-func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	if !message.Chat.IsPrivate() {
 		var btn = tgbotapi.NewInlineKeyboardButtonData("点此创建新队列", "/queue")
 		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(btn))
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -366,7 +366,7 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 	queue, err := island.CreateOnboardQueue(ctx, int64(uid), owner, password, maxGuestCount)
 	if err != nil {
 		_logger.Error().Err(err).Msg("创建队列时出错")
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				DisableNotification: false,
@@ -388,9 +388,9 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(shareBtn, dismissBtn),
 		tgbotapi.NewInlineKeyboardRow(listBtn, updatePasswordBtn),
 		tgbotapi.NewInlineKeyboardRow(nextBtn))
-	var replyText = fmt.Sprintf("队列已创建成功，密码：%s\n请使用分享按钮选择要分享排队的群/朋友\n*选择群组后请等待 telegram 弹出分享提示后点击提示！*\n/dismiss 立即解散队列\n/myqueue 列出自己创建的队列\n*请使用下面的按钮操作*", queue.Password)
+	var replyText = fmt.Sprintf("队列已创建成功，密码：%s\n请使用分享按钮选择要分享排队的群/朋友\n*选择群组后请等待 telegram 弹出分享提示后点击提示！*\n/dismiss 立即解散队列\n/myqueue 列出自己创建的队列\n/comment 留下您的建议或意见\n/donate 您愿意的话可以捐助本项目\n*请使用下面的按钮操作*", queue.Password)
 
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -403,11 +403,11 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mes
 		nil
 }
 
-func cmdDismissIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdDismissIslandQueue(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	if !message.Chat.IsPrivate() {
 		var btn = tgbotapi.NewInlineKeyboardButtonURL("请私聊我", "https://t.me/ns_fc_bot")
 		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(btn))
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -439,7 +439,7 @@ func cmdDismissIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 	}
 	queue, err := island.ClearOldOnboardQueue(ctx)
 	if err != nil {
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				DisableNotification: false,
@@ -454,7 +454,7 @@ func cmdDismissIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 		}, nil
 	}
 	replyMessage = append(replyMessage, notifyQueueDissmised(queue)...)
-	replyMessage = append(replyMessage, &tgbotapi.MessageConfig{
+	replyMessage = append(replyMessage, tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:              message.Chat.ID,
 			DisableNotification: false,
@@ -465,9 +465,9 @@ func cmdDismissIslandQueue(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 	return
 }
 
-func notifyQueueDissmised(queue *storage.OnboardQueue) (replyMessage []*tgbotapi.MessageConfig) {
+func notifyQueueDissmised(queue *storage.OnboardQueue) (replyMessage []tgbotapi.MessageConfig) {
 	for _, p := range queue.Queue {
-		replyMessage = append(replyMessage, &tgbotapi.MessageConfig{
+		replyMessage = append(replyMessage, tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              p.UID,
 				DisableNotification: false,

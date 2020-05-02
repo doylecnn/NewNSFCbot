@@ -30,25 +30,25 @@ func (e Error) Error() string {
 
 // Command interface
 type Command interface {
-	Do(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error)
+	Do(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error)
 }
 
 // Router is command router
 type Router struct {
-	commands       map[string]func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error)
-	commandSuggest func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error)
+	commands       map[string]func(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error)
+	commandSuggest func(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error)
 }
 
 // NewRouter returns new Router
 func NewRouter() Router {
 	r := Router{}
-	r.commands = make(map[string]func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error))
+	r.commands = make(map[string]func(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error))
 	r.commandSuggest = cmdSuggest
 	return r
 }
 
 // HandleFunc regist HandleFunc
-func (r Router) HandleFunc(cmd string, f func(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error)) {
+func (r Router) HandleFunc(cmd string, f func(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error)) {
 	if _, ok := r.commands[cmd]; ok {
 		_logger.Fatal().Err(errors.New("already exists handle func")).Send()
 	}
@@ -56,7 +56,7 @@ func (r Router) HandleFunc(cmd string, f func(message *tgbotapi.Message) (replyM
 }
 
 // Run the command
-func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err *Error) {
+func (r Router) Run(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err *Error) {
 	if !message.IsCommand() {
 		return
 	}
@@ -117,7 +117,7 @@ func (r Router) Run(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	return nil, &Error{InnerError: fmt.Errorf("no HandleFunc for command /%s", cmd)}
 }
 
-func cmdSuggest(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdSuggest(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	cmd := message.Command()
 	cmds, err := getMyCommands()
 	if err != nil {
@@ -135,7 +135,7 @@ func cmdSuggest(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConf
 	})
 	mostSuggestCommand := cmds[scoreCmdIdx[fuzzyScores[0]]]
 
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,

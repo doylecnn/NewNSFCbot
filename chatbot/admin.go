@@ -16,7 +16,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
-func cmdImportData(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdImportData(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	if message.From.ID != botAdminID {
 		return
 	}
@@ -47,7 +47,7 @@ func cmdImportData(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 			u.Update(ctx)
 		}
 	}
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -57,7 +57,7 @@ func cmdImportData(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 }
 
 // cmdUpgradeData 数据结构更新
-func cmdUpgradeData(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdUpgradeData(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	if message.From.ID != botAdminID {
 		return
 	}
@@ -82,7 +82,7 @@ func cmdUpgradeData(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		}
 	}
 
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:              message.Chat.ID,
 			ReplyToMessageID:    message.MessageID,
@@ -90,7 +90,7 @@ func cmdUpgradeData(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		Text: "done"}}, nil
 }
 
-func cmdListAllFriendCodes(message *tgbotapi.Message) (replyMessages []*tgbotapi.MessageConfig, err error) {
+func cmdListAllFriendCodes(message *tgbotapi.Message) (replyMessages []tgbotapi.MessageConfig, err error) {
 	if message.From.ID != botAdminID {
 		return
 	}
@@ -110,7 +110,7 @@ func cmdListAllFriendCodes(message *tgbotapi.Message) (replyMessages []*tgbotapi
 		}
 		rst = append(rst, userinfo)
 		if i != 0 && i%50 == 0 {
-			replyMessages = append(replyMessages, &tgbotapi.MessageConfig{
+			replyMessages = append(replyMessages, tgbotapi.MessageConfig{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -120,7 +120,7 @@ func cmdListAllFriendCodes(message *tgbotapi.Message) (replyMessages []*tgbotapi
 		}
 	}
 	if len(rst) > 0 {
-		replyMessages = append(replyMessages, &tgbotapi.MessageConfig{
+		replyMessages = append(replyMessages, tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -132,13 +132,13 @@ func cmdListAllFriendCodes(message *tgbotapi.Message) (replyMessages []*tgbotapi
 	return replyMessages, nil
 }
 
-func cmdToggleDebugMode(message *tgbotapi.Message) (replyMessages []*tgbotapi.MessageConfig, err error) {
+func cmdToggleDebugMode(message *tgbotapi.Message) (replyMessages []tgbotapi.MessageConfig, err error) {
 	tgbot.Debug = !tgbot.Debug
 	var debugInfo = "debug off"
 	if tgbot.Debug {
 		debugInfo = "debug on"
 	}
-	replyMessages = append(replyMessages, &tgbotapi.MessageConfig{
+	replyMessages = append(replyMessages, tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:              message.Chat.ID,
 			ReplyToMessageID:    message.MessageID,
@@ -147,7 +147,7 @@ func cmdToggleDebugMode(message *tgbotapi.Message) (replyMessages []*tgbotapi.Me
 	return replyMessages, nil
 }
 
-func (c ChatBot) cmdClearMessages(message *tgbotapi.Message) (replyMessages []*tgbotapi.MessageConfig, err error) {
+func (c ChatBot) cmdClearMessages(message *tgbotapi.Message) (replyMessages []tgbotapi.MessageConfig, err error) {
 	if len(sentMsgs) > 0 {
 		sort.Slice(sentMsgs, func(i, j int) bool {
 			return sentMsgs[i].Time.After(sentMsgs[j].Time)
@@ -172,7 +172,7 @@ func (c ChatBot) cmdClearMessages(message *tgbotapi.Message) (replyMessages []*t
 	c.logger.Info().Int("sentMsgs len", len(sentMsgs)).
 		Int("cacheForEdit len", cacheForEdit.Len()).
 		Msg("clear")
-	replyMessages = append(replyMessages, &tgbotapi.MessageConfig{
+	replyMessages = append(replyMessages, tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:              message.Chat.ID,
 			ReplyToMessageID:    message.MessageID,

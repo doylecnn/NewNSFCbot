@@ -69,6 +69,9 @@ func (c ChatBot) HandleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	} else if strings.HasPrefix(query.Data, "/delFC_") {
 		processed = true
 		result, err = callbackQueryDeleteFriendCode(query)
+	} else if strings.HasPrefix(query.Data, "/donate_") {
+		processed = true
+		result, err = callbackQueryDonate(query)
 	}
 	if processed {
 		if err != nil {
@@ -119,7 +122,7 @@ func callbackQueryCancel(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi
 }
 
 func callbackQueryStartQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
-	_, err = tgbot.Send(&tgbotapi.MessageConfig{
+	_, err = tgbot.Send(tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID: int64(query.From.ID),
 		},
@@ -158,7 +161,7 @@ func callbackQueryUpdateQueuePassword(query *tgbotapi.CallbackQuery) (callbackCo
 		}, nil
 	}
 	if queue != nil && !queue.Dismissed {
-		_, err = tgbot.Send(&tgbotapi.MessageConfig{
+		_, err = tgbot.Send(tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:      int64(query.From.ID),
 				ReplyMarkup: tgbotapi.ForceReply{ForceReply: true, Selective: true},
@@ -251,7 +254,7 @@ func callbackQueryShowQueueMembers(query *tgbotapi.CallbackQuery) (callbackConfi
 	} else {
 		replyText += "0人"
 	}
-	_, err = tgbot.Send(&tgbotapi.MessageConfig{
+	_, err = tgbot.Send(tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID: int64(query.From.ID),
 		},
@@ -481,7 +484,7 @@ func sendNotify(ctx context.Context, client *firestore.Client, queue *storage.On
 		if err != nil {
 			_logger.Error().Err(err).Int64("uid", uid).Msg("get postion failed")
 		}
-		_, err = tgbot.Send(&tgbotapi.MessageConfig{
+		_, err = tgbot.Send(tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:      uid,
 				ReplyMarkup: replyMarkup,
@@ -545,7 +548,7 @@ func callbackQueryShowQueueInfo(query *tgbotapi.CallbackQuery) (callbackConfig t
 	var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", fmt.Sprintf("/position_%s|%d", queue.ID, unixtime))
 	var leaveBtn = tgbotapi.NewInlineKeyboardButtonData("离开队列："+queue.Name, "/leave_"+queue.ID)
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, leaveBtn))
-	tgbot.Send(&tgbotapi.MessageConfig{
+	tgbot.Send(tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:      uid,
 			ReplyMarkup: replyMarkup,
@@ -630,14 +633,14 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 		var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", fmt.Sprintf("/position_%s|%d", queue.ID, time.Now().Unix()))
 		var leaveBtn = tgbotapi.NewInlineKeyboardButtonData("离开队列："+queue.Name, "/leave_"+queue.ID)
 		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, leaveBtn))
-		tgbot.Send(&tgbotapi.MessageConfig{
+		tgbot.Send(tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:      uid,
 				ReplyMarkup: replyMarkup,
 			},
 			Text: fmt.Sprintf("正在队列：%s 中排队，当前位置：%d/%d。\n当前岛上有 %d 个客人", queue.Name, l, t, queue.LandedLen()),
 		})
-		sentMsg, err := tgbot.Send(&tgbotapi.MessageConfig{
+		sentMsg, err := tgbot.Send(tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID: queue.OwnerID,
 			},
@@ -746,7 +749,7 @@ func callbackQueryGetPositionInQueue(query *tgbotapi.CallbackQuery) (callbackCon
 	var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", fmt.Sprintf("/position_%s|%d", queue.ID, unixtime))
 	var leaveBtn = tgbotapi.NewInlineKeyboardButtonData("离开队列："+queue.Name, "/leave_"+queue.ID)
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, leaveBtn))
-	_, err = tgbot.Send(&tgbotapi.EditMessageTextConfig{
+	_, err = tgbot.Send(tgbotapi.EditMessageTextConfig{
 		BaseEdit: tgbotapi.BaseEdit{
 			ChatID:      uid,
 			MessageID:   query.Message.MessageID,
@@ -812,7 +815,7 @@ func callbackQueryComing(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi
 	var replyMarkup1 = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(doneBtn),
 		tgbotapi.NewInlineKeyboardRow(sorryBtn))
-	_, err = tgbot.Send(&tgbotapi.EditMessageTextConfig{
+	_, err = tgbot.Send(tgbotapi.EditMessageTextConfig{
 		BaseEdit: tgbotapi.BaseEdit{
 			ChatID:      query.Message.Chat.ID,
 			MessageID:   query.Message.MessageID,
@@ -840,7 +843,7 @@ func callbackQueryComing(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi
 		tgbotapi.NewInlineKeyboardRow(listBtn, updatePasswordBtn),
 		tgbotapi.NewInlineKeyboardRow(nextBtn))
 
-	_, err = tgbot.Send(&tgbotapi.MessageConfig{
+	_, err = tgbot.Send(tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:      queue.OwnerID,
 			ReplyMarkup: replyMarkup,
@@ -916,13 +919,13 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 
 	var joinBtn = tgbotapi.NewInlineKeyboardButtonData("再排一次：", "/join_"+queueID)
 	var replyMarkupToQueueMember = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(joinBtn))
-	_, err = tgbot.Send(&tgbotapi.EditMessageTextConfig{
+	_, err = tgbot.Send(tgbotapi.EditMessageTextConfig{
 		BaseEdit: tgbotapi.BaseEdit{
 			ChatID:      query.Message.Chat.ID,
 			MessageID:   query.Message.MessageID,
 			ReplyMarkup: &replyMarkupToQueueMember,
 		},
-		Text: "感谢本次使用",
+		Text: "感谢您使用我的排队机器人。\n如果对使用有任何意见、建议、感想，请点击 /comments\n如果您愿意捐助我，请点击 /donate",
 	})
 	if err != nil {
 		_logger.Error().Err(err).Int("uid", query.From.ID).
@@ -943,7 +946,7 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 		tgbotapi.NewInlineKeyboardRow(listBtn, updatePasswordBtn),
 		tgbotapi.NewInlineKeyboardRow(nextBtn))
 
-	_, err = tgbot.Send(&tgbotapi.MessageConfig{
+	_, err = tgbot.Send(tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:      queue.OwnerID,
 			ReplyMarkup: replyMarkup,
@@ -968,7 +971,7 @@ func callbackQueryManageFriendCodes(query *tgbotapi.CallbackQuery) (callbackConf
 		var u storage.User
 		u, err = storage.GetUser(ctx, uid, 0)
 		if err != nil && status.Code(err) != codes.NotFound {
-			tgbot.Send(&tgbotapi.MessageConfig{
+			tgbot.Send(tgbotapi.MessageConfig{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              int64(uid),
 					DisableNotification: true},
@@ -978,7 +981,7 @@ func callbackQueryManageFriendCodes(query *tgbotapi.CallbackQuery) (callbackConf
 		}
 		if err != nil && status.Code(err) == codes.NotFound {
 			_logger.Debug().Msg("没有找到用户记录")
-			tgbot.Send(&tgbotapi.MessageConfig{
+			tgbot.Send(tgbotapi.MessageConfig{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              int64(uid),
 					DisableNotification: true},
@@ -994,7 +997,7 @@ func callbackQueryManageFriendCodes(query *tgbotapi.CallbackQuery) (callbackConf
 		var cancelBtn = tgbotapi.NewInlineKeyboardButtonData("取消", "/cancel")
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(cancelBtn))
 		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
-		tgbot.Send(&tgbotapi.MessageConfig{
+		tgbot.Send(tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:      int64(uid),
 				ReplyMarkup: replyMarkup,
@@ -1055,7 +1058,7 @@ func callbackQueryManageFriendCodes(query *tgbotapi.CallbackQuery) (callbackConf
 		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(delFCBtn, backBtn, cancelBtn),
 		)
-		tgbot.Send(&tgbotapi.EditMessageTextConfig{
+		tgbot.Send(tgbotapi.EditMessageTextConfig{
 			BaseEdit: tgbotapi.BaseEdit{
 				ChatID:      int64(uid),
 				MessageID:   query.Message.MessageID,
@@ -1119,7 +1122,7 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 	}
 	u, err = storage.GetUser(ctx, uid, 0)
 	if err != nil && status.Code(err) != codes.NotFound {
-		tgbot.Send(&tgbotapi.MessageConfig{
+		tgbot.Send(tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              int64(uid),
 				DisableNotification: true},
@@ -1129,7 +1132,7 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 	}
 	if err != nil && status.Code(err) == codes.NotFound {
 		_logger.Debug().Msg("没有找到用户记录")
-		tgbot.Send(&tgbotapi.MessageConfig{
+		tgbot.Send(tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              int64(uid),
 				DisableNotification: true},
@@ -1139,7 +1142,7 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 	}
 	if len(u.NSAccounts) == 0 {
 		_logger.Debug().Msg("没有找到用户记录")
-		tgbot.Send(&tgbotapi.MessageConfig{
+		tgbot.Send(tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              int64(uid),
 				DisableNotification: true},
@@ -1164,13 +1167,47 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 	var cancelBtn = tgbotapi.NewInlineKeyboardButtonData("取消", "/cancel")
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(cancelBtn))
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
-	tgbot.Send(&tgbotapi.EditMessageTextConfig{
+	tgbot.Send(tgbotapi.EditMessageTextConfig{
 		BaseEdit: tgbotapi.BaseEdit{
 			ChatID:      int64(uid),
 			MessageID:   query.Message.MessageID,
 			ReplyMarkup: &replyMarkup,
 		},
 		Text: "请点击要管理的 Friend Code\n/addfc [id]:[FC] 添加新的 Friend Code"})
+	err = errors.New("no_alert")
+	return
+}
+
+func callbackQueryDonate(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
+	var payMethod = string(query.Data[8:])
+	switch payMethod {
+	case "alipay":
+		tgbot.Send(tgbotapi.EditMessageTextConfig{
+			BaseEdit: tgbotapi.BaseEdit{
+				ChatID:    query.Message.Chat.ID,
+				MessageID: query.Message.MessageID,
+			},
+			Text:                  "支付宝/Alipay 收款，请扫二维码\n手机请分享图片到“支付宝二维码”或[直接点此](https://qr.alipay.com/fkx0772462palzmnoo9l8dc)",
+			ParseMode:             "MarkdownV2",
+			DisableWebPagePreview: true,
+		})
+		tgbot.Send(tgbotapi.NewPhotoUpload(query.Message.Chat.ID, "./web/static/vifubk.png"))
+	case "wechat":
+		tgbot.Send(tgbotapi.EditMessageTextConfig{
+			BaseEdit: tgbotapi.BaseEdit{
+				ChatID:    query.Message.Chat.ID,
+				MessageID: query.Message.MessageID,
+			},
+			Text: "微信/Wechat 收款，请扫二维码\n手机请先保存二维码图片，然后使用微信扫一扫，并选择刚保存的二维码图片"})
+		tgbot.Send(tgbotapi.NewPhotoUpload(query.Message.Chat.ID, "./web/static/wzxn.png"))
+	case "other":
+		tgbot.Send(tgbotapi.EditMessageTextConfig{
+			BaseEdit: tgbotapi.BaseEdit{
+				ChatID:    query.Message.Chat.ID,
+				MessageID: query.Message.MessageID,
+			},
+			Text: "其它方式：请联系 @Diberium"})
+	}
 	err = errors.New("no_alert")
 	return
 }

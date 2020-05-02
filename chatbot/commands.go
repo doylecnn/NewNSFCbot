@@ -14,7 +14,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
-func cmdAddFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdAddFC(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	args := strings.TrimSpace(message.CommandArguments())
 	if len(args) <= 1 {
 		return
@@ -99,7 +99,7 @@ func cmdAddFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 		return cmdMyFC(message)
 	}
 
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -108,7 +108,7 @@ func cmdAddFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 		nil
 }
 
-func cmdDelFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdDelFC(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	arg := strings.TrimSpace(message.CommandArguments())
 	if len(arg) < 12 {
 		return
@@ -135,7 +135,7 @@ func cmdDelFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 	for _, a := range u.NSAccounts {
 		if a.FC == fc {
 			if err = u.DeleteNSAccount(ctx, a); err == nil {
-				return []*tgbotapi.MessageConfig{{
+				return []tgbotapi.MessageConfig{{
 						BaseChat: tgbotapi.BaseChat{
 							ChatID:              message.Chat.ID,
 							ReplyToMessageID:    message.MessageID,
@@ -148,7 +148,7 @@ func cmdDelFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 			}
 		}
 	}
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -157,7 +157,7 @@ func cmdDelFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 		nil
 }
 
-func cmdDeleteMe(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdDeleteMe(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	ctx := context.Background()
 	var u storage.User
 	if u, err = storage.GetUser(ctx, message.From.ID, 0); err != nil {
@@ -169,7 +169,7 @@ func cmdDeleteMe(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 		_logger.Error().Err(err).Send()
 	}
 
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -178,7 +178,7 @@ func cmdDeleteMe(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 		nil
 }
 
-func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdMyFC(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	ctx := context.Background()
 	u, err := storage.GetUser(ctx, message.From.ID, 0)
 	if err != nil && status.Code(err) != codes.NotFound {
@@ -188,7 +188,7 @@ func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig,
 	}
 	if err != nil && status.Code(err) == codes.NotFound {
 		_logger.Debug().Msg("没有找到用户记录")
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -197,7 +197,7 @@ func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig,
 			nil
 	}
 	if len(u.NSAccounts) == 0 {
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -215,7 +215,7 @@ func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig,
 		var cancelBtn = tgbotapi.NewInlineKeyboardButtonData("取消", "/cancel")
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(cancelBtn))
 		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:      message.Chat.ID,
 				ReplyMarkup: replyMarkup,
@@ -229,7 +229,7 @@ func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig,
 	var manageFCBtn = tgbotapi.NewInlineKeyboardButtonData("管理 Friend Code", "/manageFriendCodes")
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(manageFCBtn))
 	var replyText = fmt.Sprintf("您的 Friend Code：\n%s\n您可私聊 bot 管理您的 FriendCode", strings.Join(astr, "\n"))
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -241,7 +241,7 @@ func cmdMyFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig,
 		nil
 }
 
-func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdSearchFC(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	if message.Chat.IsPrivate() {
 		return
 	}
@@ -282,7 +282,7 @@ func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 
 	if len(us) == 0 {
 		_logger.Info().Msg("users count == 0")
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -295,7 +295,7 @@ func cmdSearchFC(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 	for _, account := range u.NSAccounts {
 		astr = append(astr, account.String())
 	}
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -357,8 +357,8 @@ func inlineQueryMyIsland(query *tgbotapi.InlineQuery) (*tgbotapi.InlineConfig, e
 	}, nil
 }
 
-func cmdWebLogin(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
-	return []*tgbotapi.MessageConfig{{
+func cmdWebLogin(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -367,7 +367,7 @@ func cmdWebLogin(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 		nil
 }
 
-func cmdListFriendCodes(message *tgbotapi.Message) (replyMessages []*tgbotapi.MessageConfig, err error) {
+func cmdListFriendCodes(message *tgbotapi.Message) (replyMessages []tgbotapi.MessageConfig, err error) {
 	if message.Chat.IsPrivate() {
 		return
 	}
@@ -401,7 +401,7 @@ func cmdListFriendCodes(message *tgbotapi.Message) (replyMessages []*tgbotapi.Me
 		}
 		i++
 		if i != 0 && i%50 == 0 {
-			replyMessages = append(replyMessages, &tgbotapi.MessageConfig{
+			replyMessages = append(replyMessages, tgbotapi.MessageConfig{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -411,7 +411,7 @@ func cmdListFriendCodes(message *tgbotapi.Message) (replyMessages []*tgbotapi.Me
 		}
 	}
 	if len(rst) > 0 {
-		replyMessages = append(replyMessages, &tgbotapi.MessageConfig{
+		replyMessages = append(replyMessages, tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -421,4 +421,48 @@ func cmdListFriendCodes(message *tgbotapi.Message) (replyMessages []*tgbotapi.Me
 	}
 
 	return replyMessages, nil
+}
+
+func cmdComments(message *tgbotapi.Message) (replyMessages []tgbotapi.MessageConfig, err error) {
+	if !message.Chat.IsPrivate() {
+		return []tgbotapi.MessageConfig{tgbotapi.NewMessage(message.Chat.ID, "请私聊bot 使用本命令")}, nil
+	}
+	var username = message.From.UserName
+	if len(username) == 0 {
+		username = message.From.FirstName
+	}
+	comment := storage.Comment{Username: username,
+		UserID:  message.From.ID,
+		Comment: strings.TrimSpace(message.CommandArguments()),
+		Time:    message.Time(),
+	}
+	if lerr := storage.CreateNewComment(context.Background(), comment); err != nil {
+		err = Error{InnerError: lerr, ReplyText: "留言失败……"}
+		return
+	}
+	return []tgbotapi.MessageConfig{{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID:           message.Chat.ID,
+			ReplyToMessageID: message.MessageID,
+		},
+		Text:                  "@NS_FC_bot 项目在[github](https://github.com/doylecnn/newnsfcbot)上开源\n留言成功。感谢您使用 @NS_FC_bot。",
+		ParseMode:             "MarkdownV2",
+		DisableWebPagePreview: true,
+	}}, nil
+}
+
+func cmdDonate(message *tgbotapi.Message) (replyMessages []tgbotapi.MessageConfig, err error) {
+	var alipayButton = tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("支付宝/Alipay", "/donate_alipay"))
+	var wechatButton = tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("微信/Wechat", "/donate_wechat"))
+	var paypalButton = tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("其它方式/other", "/donate_other"))
+	return []tgbotapi.MessageConfig{{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID:           message.Chat.ID,
+			ReplyToMessageID: message.MessageID,
+			ReplyMarkup:      tgbotapi.NewInlineKeyboardMarkup(alipayButton, wechatButton, paypalButton),
+		},
+		Text:                  "@NS_FC_bot 项目在[github](https://github.com/doylecnn/newnsfcbot)上开源\n感谢您的支持。请选择下列支付方式。",
+		ParseMode:             "MarkdownV2",
+		DisableWebPagePreview: true,
+	}}, nil
 }

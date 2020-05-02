@@ -71,7 +71,6 @@ func NewWeb(token, domain, appID, projectID, port string, adminID int, bot chatb
 		AdminID:     adminID,
 	}
 	r.Use(favicon.New("./web/static/favicon.png"))
-	r.Static("/ACNH_Turnip_Calculator", "web/static/ACNH_Turnip_Calculator")
 
 	r.LoadHTMLGlob("web/templates/*")
 

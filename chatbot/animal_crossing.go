@@ -19,7 +19,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
-func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	argstr := strings.TrimSpace(message.CommandArguments())
 	var username = message.From.UserName
 	if len(username) == 0 {
@@ -148,7 +148,7 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	if FCNotExists {
 		rstText += "但您还没有登记您的FC。\n将来可使用/addfc 命令登记，方便群友通过FC 添加您为好友狸。"
 	}
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -157,7 +157,7 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		nil
 }
 
-func cmdUpdateIslandBaseInfo(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdUpdateIslandBaseInfo(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	args := strings.TrimSpace(message.CommandArguments())
 	if len(args) == 0 {
 		return
@@ -170,7 +170,7 @@ func cmdUpdateIslandBaseInfo(message *tgbotapi.Message) (replyMessage []*tgbotap
 		}
 	}
 	if island == nil {
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -186,7 +186,7 @@ func cmdUpdateIslandBaseInfo(message *tgbotapi.Message) (replyMessage []*tgbotap
 			}
 		}
 	}
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -195,7 +195,7 @@ func cmdUpdateIslandBaseInfo(message *tgbotapi.Message) (replyMessage []*tgbotap
 		nil
 }
 
-func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	uid := message.From.ID
 	args := strings.TrimSpace(message.CommandArguments())
 	if len(args) == 0 {
@@ -269,7 +269,7 @@ func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.M
 		_logger.Error().Err(err).Str("weekprice", weekpriceStr).Msg("updateweekprice error")
 	}
 
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -278,7 +278,7 @@ func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []*tgbotapi.M
 		nil
 }
 
-func cmdMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdMyIsland(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	ctx := context.Background()
 	island, _, err := storage.GetAnimalCrossingIslandByUserID(ctx, message.From.ID)
 	if err != nil {
@@ -287,7 +287,7 @@ func cmdMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 		}
 	}
 	if island == nil {
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -295,7 +295,7 @@ func cmdMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 				Text: "没有找到您的记录，请先使用 addisland 命令添加岛屿记录"}},
 			nil
 	}
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -304,7 +304,7 @@ func cmdMyIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageCon
 		nil
 }
 
-func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	var groupID int64 = 0
 	if !message.Chat.IsPrivate() {
 		groupID = message.Chat.ID
@@ -336,7 +336,7 @@ func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 		}
 	}
 	if island == nil {
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -354,7 +354,7 @@ func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 	}
 	var btn = tgbotapi.NewInlineKeyboardButtonData("点此创建新队列", "/queue")
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(btn))
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -365,7 +365,7 @@ func cmdOpenIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageC
 		nil
 }
 
-func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	var groupID int64 = 0
 	if !message.Chat.IsPrivate() {
 		groupID = message.Chat.ID
@@ -378,7 +378,7 @@ func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		}
 	}
 	if err != nil && status.Code(err) == codes.NotFound {
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -393,7 +393,7 @@ func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		}
 	}
 	if island == nil {
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -407,7 +407,7 @@ func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		if len(island.OnBoardQueueID) > 0 {
 			queue, lerr := island.ClearOldOnboardQueue(ctx)
 			if lerr != nil {
-				return []*tgbotapi.MessageConfig{
+				return []tgbotapi.MessageConfig{
 					{BaseChat: tgbotapi.BaseChat{
 						ChatID:              int64(message.From.ID),
 						DisableNotification: false},
@@ -422,7 +422,7 @@ func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		}
 		island.Update(ctx)
 	}
-	replyMessage = append(replyMessage, &tgbotapi.MessageConfig{
+	replyMessage = append(replyMessage, tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:              message.Chat.ID,
 			ReplyToMessageID:    message.MessageID,
@@ -431,8 +431,8 @@ func cmdCloseIsland(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 	return
 }
 
-func cmdListIslands(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
-	return []*tgbotapi.MessageConfig{{
+func cmdListIslands(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -441,7 +441,7 @@ func cmdListIslands(message *tgbotapi.Message) (replyMessage []*tgbotapi.Message
 		nil
 }
 
-func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	pricestr := strings.TrimSpace(message.CommandArguments())
 	uid := message.From.ID
 	if message.From.ID == botAdminID && message.Chat.IsPrivate() {
@@ -486,7 +486,7 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []*tgbotapi.Mess
 }
 
 // cmdDTCWeekPriceAndPredict 当周菜价回看/预测
-func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	argstr := strings.TrimSpace(message.CommandArguments())
 	uid := message.From.ID
 	if message.From.ID == botAdminID && message.Chat.IsPrivate() && strings.HasPrefix(argstr, "#") {
@@ -507,7 +507,7 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []*tgbot
 	return getWeeklyDTCPriceHistory(ctx, message, uid, argstr)
 }
 
-func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, uid int, argstr string) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, uid int, argstr string) (replyMessage []tgbotapi.MessageConfig, err error) {
 	island, residentUID, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -599,7 +599,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 	formatedNow := markdownSafe(locNow.Format(time.RFC1123Z))
 	replyText = fmt.Sprintf("您的岛上时间：%s\n", formatedNow) + replyText
 	if message.Chat.IsPrivate() {
-		replyMessage = []*tgbotapi.MessageConfig{{
+		replyMessage = []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -613,7 +613,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 	}
 	_, _, changed, err := getTopPriceUsersAndLowestPriceUser(ctx, message.Chat.ID, locNow)
 	if err != nil {
-		replyMessage = []*tgbotapi.MessageConfig{{
+		replyMessage = []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -630,7 +630,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 	} else {
 		replyText = "*您本次的报价对高价排行有影响，请使用指令 /gj 查看*\n" + replyText
 	}
-	replyMessage = []*tgbotapi.MessageConfig{{
+	replyMessage = []tgbotapi.MessageConfig{{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID:              message.Chat.ID,
 			ReplyToMessageID:    message.MessageID,
@@ -717,7 +717,7 @@ func weekPriceStrings(priceHistory []storage.TurnipPrice) (weekPrices []string) 
 	return
 }
 
-func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	if message.Chat.IsPrivate() && message.From.ID != botAdminID {
 		return
 	}
@@ -749,7 +749,7 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 	topPriceUsers, lowestPriceUsers, _, err := getTopPriceUsersAndLowestPriceUser(ctx, chatid, localtime)
 	if err != nil {
 		if err.Error() == "NoValidPrice" {
-			return []*tgbotapi.MessageConfig{{
+			return []tgbotapi.MessageConfig{{
 					BaseChat: tgbotapi.BaseChat{
 						ChatID:              message.Chat.ID,
 						ReplyToMessageID:    message.MessageID,
@@ -790,7 +790,7 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []*tgbotapi.
 
 	replyText = strings.ReplaceAll(replyText, "+", "\\+")
 	replyText = strings.ReplaceAll(replyText, "-", "\\-")
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -967,7 +967,7 @@ func formatIslandDTCPrice(user storage.User, rank int) string {
 	return formatedString
 }
 
-func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdWhois(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	if message.Chat.IsPrivate() {
 		return
 	}
@@ -1062,7 +1062,7 @@ func cmdWhois(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig
 		replyText = "没有找到狸。"
 	}
 
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -1108,7 +1108,7 @@ func formatUserSearchResult(ctx context.Context, usermap map[string]struct{}, us
 	return strings.Join(rst, "\n")
 }
 
-func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
+func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	if message.Chat.IsPrivate() {
 		return
 	}
@@ -1145,7 +1145,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 
 	if len(us) == 0 {
 		_logger.Info().Msg("users count == 0")
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -1169,7 +1169,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 	}
 
 	if user == nil {
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -1185,7 +1185,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 		}
 	}
 	if island == nil {
-		return []*tgbotapi.MessageConfig{{
+		return []tgbotapi.MessageConfig{{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              message.Chat.ID,
 					ReplyToMessageID:    message.MessageID,
@@ -1194,7 +1194,7 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 			nil
 	}
 
-	return []*tgbotapi.MessageConfig{{
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
@@ -1203,8 +1203,8 @@ func cmdSearchAnimalCrossingInfo(message *tgbotapi.Message) (replyMessage []*tgb
 		nil
 }
 
-func cmdHuaShiJiaoHuanBiaoGe(message *tgbotapi.Message) (replyMessage []*tgbotapi.MessageConfig, err error) {
-	return []*tgbotapi.MessageConfig{{
+func cmdHuaShiJiaoHuanBiaoGe(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
+	return []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
 				ReplyToMessageID:    message.MessageID,
