@@ -27,7 +27,7 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageC
 	}
 	args := strings.Split(argstr, " ")
 	if len(args) < 3 {
-		return nil, Error{InnerError: err,
+		return nil, Error{InnerError: errors.New("args length less 3"),
 			ReplyText: `/addisland 详细语法：
 /addisland 命令至少需要3个参数，第一个是岛的名字，第二个是南北半球，第三个是岛主，其它内容将作为岛屿的基本信息。所有参数使用空格分割
 南北半球请使用 N 或 S 表示：N 表示北半球，S 表示南半球`,
@@ -40,7 +40,7 @@ func cmdAddMyIsland(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageC
 	} else if args[1] == "S" {
 		hemisphere = 1
 	} else {
-		return nil, Error{InnerError: err,
+		return nil, Error{InnerError: errors.New("args wrong"),
 			ReplyText: "请使用 N 表示北半球，S 表示南半球狸",
 		}
 	}
