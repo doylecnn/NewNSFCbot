@@ -31,7 +31,7 @@ func InitLogger(_projectID string) {
 		logger = log.Logger
 		logger.Error().Err(err).Msg("new NewStackdriverLoggingWriter failed")
 	} else {
-		logger = zerolog.New(sw)
+		logger = zerolog.New(sw).Level(zerolog.DebugLevel)
 	}
 }
 

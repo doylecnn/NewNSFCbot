@@ -245,8 +245,9 @@ func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []tgbotapi.Me
 		}
 	}
 	//updateWeekPrice
-	var weekStartDateUTC = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
-	var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 0, 0, 0, 0, oldtimezone.Location())
+	var now = time.Now()
+	var weekStartDateUTC = now.AddDate(0, 0, 0-int(now.Weekday()))
+	var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 5, 0, 0, 0, oldtimezone.Location())
 	var weekStartDate = weekStartDateLoc.UTC()
 	var weekEndDate = weekStartDate.AddDate(0, 0, 7)
 	oldPriceHistory, err := storage.GetWeeklyDTCPriceHistory(ctx, uid, weekStartDate, weekEndDate)
@@ -523,8 +524,9 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 		uid = residentUID
 	}
 	var prices []storage.TurnipPrice
-	var weekStartDateUTC = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
-	var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 0, 0, 0, 0, island.Timezone.Location())
+	var now = time.Now()
+	var weekStartDateUTC = now.AddDate(0, 0, 0-int(now.Weekday()))
+	var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 5, 0, 0, 0, island.Timezone.Location())
 	var weekStartDate = weekStartDateLoc.UTC()
 	var weekEndDate = weekStartDate.AddDate(0, 0, 7)
 	if len(argstr) != 0 {
@@ -845,8 +847,9 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 		if !strings.HasSuffix(island.Name, "岛") {
 			island.Name += "岛"
 		}
-		var weekStartDateUTC = time.Now().AddDate(0, 0, 0-int(time.Now().Weekday())).Truncate(24 * time.Hour)
-		var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 0, 0, 0, 0, island.Timezone.Location())
+		var now = time.Now()
+		var weekStartDateUTC = now.AddDate(0, 0, 0-int(now.Weekday()))
+		var weekStartDateLoc = time.Date(weekStartDateUTC.Year(), weekStartDateUTC.Month(), weekStartDateUTC.Day(), 5, 0, 0, 0, island.Timezone.Location())
 		var weekStartDate = weekStartDateLoc.UTC()
 		var weekEndDate = weekStartDate.AddDate(0, 0, 7)
 		uid := u.ID

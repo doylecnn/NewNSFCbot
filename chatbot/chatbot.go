@@ -55,7 +55,7 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 		logger = log.Logger
 		logger.Error().Err(err).Msg("new NewStackdriverLoggingWriter failed")
 	} else {
-		logger = zerolog.New(sw)
+		logger = zerolog.New(sw).Level(zerolog.DebugLevel)
 	}
 	_logger = logger
 	bot, err := tgbotapi.NewBotAPI(token)

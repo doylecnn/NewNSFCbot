@@ -48,7 +48,7 @@ func NewWeb(token, domain, appID, projectID, port string, adminID int, bot chatb
 		zerologger = log.Logger
 		zerologger.Error().Err(err).Msg("new NewStackdriverLoggingWriter failed")
 	} else {
-		zerologger = zerolog.New(sw)
+		zerologger = zerolog.New(sw).Level(zerolog.DebugLevel)
 		_logger = zerologger
 	}
 	gin.SetMode(gin.ReleaseMode)

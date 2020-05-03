@@ -11,6 +11,7 @@ import (
 	"github.com/doylecnn/new-nsfc-bot/chatbot"
 	"github.com/doylecnn/new-nsfc-bot/storage"
 	"github.com/doylecnn/new-nsfc-bot/web"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -24,6 +25,7 @@ type env struct {
 }
 
 func main() {
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	env := readEnv()
 	rand.Seed(time.Now().Unix())
 

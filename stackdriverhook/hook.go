@@ -11,7 +11,6 @@ import (
 	"cloud.google.com/go/errorreporting"
 	"cloud.google.com/go/logging"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 // A StackdriverLoggingWriter accepts pre-encoded JSON messages and writes
@@ -49,7 +48,7 @@ func (sw *StackdriverLoggingWriter) WriteLevel(level zerolog.Level, p []byte) (i
 		severity = logging.Critical
 	}
 
-	if severity != logging.Error && severity != logging.Critical {
+	if level < zerolog.ErrorLevel {
 		sw.logger.Log(logging.Entry{Payload: rawJSON(p), Severity: severity})
 	} else {
 		sw.logger.Log(logging.Entry{Payload: rawJSON(p), Severity: severity})
@@ -101,20 +100,22 @@ func NewStackdriverLoggingWriter(GCPProjectID, logName string, labels map[string
 	if err := client.Ping(context.Background()); err != nil {
 		return nil, fmt.Errorf("ping: %w", err)
 	}
+	// labels comes before opts so that any CommonLabels in opts take precedence.
+	opts = append([]logging.LoggerOption{logging.CommonLabels(labels)}, opts...)
+	logger := client.Logger(logName, opts...)
+
 	errorClient, err := errorreporting.NewClient(context.Background(), GCPProjectID, errorreporting.Config{
 		ServiceName: GCPProjectID,
 		OnError: func(err error) {
-			log.Printf("Could not log error: %v", err)
+			logger.StandardLogger(logging.Error).Printf("Could not log error: %v", err)
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// labels comes before opts so that any CommonLabels in opts take precedence.
-	opts = append([]logging.LoggerOption{logging.CommonLabels(labels)}, opts...)
 	return &StackdriverLoggingWriter{
-		logger:      client.Logger(logName, opts...),
+		logger:      logger,
 		client:      client,
 		errorClient: errorClient,
 	}, nil
