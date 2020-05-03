@@ -25,7 +25,6 @@ var (
 // InitLogger InitLogger
 func InitLogger(_projectID string) {
 	projectID = _projectID
-	var logger zerolog.Logger
 	sw, err := stackdriverhook.NewStackdriverLoggingWriter(projectID, "nsfcbot", map[string]string{"from": "storage"})
 	if err != nil {
 		logger = log.Logger
