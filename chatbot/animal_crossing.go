@@ -250,9 +250,10 @@ func cmdSetIslandTimezone(message *tgbotapi.Message) (replyMessage []tgbotapi.Me
 		nowLoc = nowLoc.Add(-(time.Duration(nowLoc.Hour()+1) * time.Hour))
 	}
 	var weekStartDateLoc = nowLoc.AddDate(0, 0, 0-int(nowLoc.Weekday()))
-	weekStartDateLoc = time.Date(weekStartDateLoc.Year(), weekStartDateLoc.Month(), weekStartDateLoc.Day(), 5, 0, 0, 0, oldtimezone.Location())
+	weekStartDateLoc = time.Date(weekStartDateLoc.Year(), weekStartDateLoc.Month(), weekStartDateLoc.Day(), 0, 0, 0, 0, oldtimezone.Location())
 	var weekStartDate = weekStartDateLoc.UTC()
 	var weekEndDate = weekStartDate.AddDate(0, 0, 7)
+	weekStartDate = weekStartDate.Add(5 * time.Hour)
 	oldPriceHistory, err := storage.GetWeeklyDTCPriceHistory(ctx, uid, weekStartDate, weekEndDate)
 
 	var weekPrices []string = make([]string, 13)
@@ -532,7 +533,7 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 		nowLoc = nowLoc.Add(-(time.Duration(nowLoc.Hour()+1) * time.Hour))
 	}
 	var weekStartDateLoc = nowLoc.AddDate(0, 0, 0-int(nowLoc.Weekday()))
-	weekStartDateLoc = time.Date(weekStartDateLoc.Year(), weekStartDateLoc.Month(), weekStartDateLoc.Day(), 5, 0, 0, 0, island.Timezone.Location())
+	weekStartDateLoc = time.Date(weekStartDateLoc.Year(), weekStartDateLoc.Month(), weekStartDateLoc.Day(), 0, 0, 0, 0, island.Timezone.Location())
 	var weekStartDate = weekStartDateLoc.UTC()
 	var weekEndDate = weekStartDate.AddDate(0, 0, 7)
 	if len(argstr) != 0 {
@@ -858,9 +859,10 @@ func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, local
 			nowLoc = nowLoc.Add(-(time.Duration(nowLoc.Hour()+1) * time.Hour))
 		}
 		var weekStartDateLoc = nowLoc.AddDate(0, 0, 0-int(nowLoc.Weekday()))
-		weekStartDateLoc = time.Date(weekStartDateLoc.Year(), weekStartDateLoc.Month(), weekStartDateLoc.Day(), 5, 0, 0, 0, island.Timezone.Location())
+		weekStartDateLoc = time.Date(weekStartDateLoc.Year(), weekStartDateLoc.Month(), weekStartDateLoc.Day(), 0, 0, 0, 0, island.Timezone.Location())
 		var weekStartDate = weekStartDateLoc.UTC()
 		var weekEndDate = weekStartDate.AddDate(0, 0, 7)
+		weekStartDate = weekStartDate.Add(5 * time.Hour)
 		uid := u.ID
 		if residentUID > 0 {
 			uid = residentUID
