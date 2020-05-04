@@ -308,6 +308,10 @@ func UpdateDTCPrice(ctx context.Context, uid, price int) (err error) {
 		islandLoc := island.Timezone.Location()
 		loc := now.In(islandLoc)
 		if loc.Weekday() == 0 && loc.Hour() >= 5 {
+			if price < 90 || price > 110 {
+				err = errors.New("buy price out of range")
+				return
+			}
 			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 5, 0, 0, 0, islandLoc).UTC()
 		} else if loc.Hour() >= 8 && loc.Hour() < 12 {
 			now = time.Date(loc.Year(), loc.Month(), loc.Day(), 8, 0, 0, 0, islandLoc).UTC()

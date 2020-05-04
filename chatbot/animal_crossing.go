@@ -468,7 +468,12 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []tgbotapi.Messa
 	}
 
 	price, err := strconv.ParseInt(pricestr, 10, 64)
-	if err != nil || price < 1 || price > 999 {
+	if err != nil {
+		return nil, Error{InnerError: err,
+			ReplyText: "请检查参数，参数必须是数字狸",
+		}
+	}
+	if price < 1 || price > 999 {
 		return nil, Error{InnerError: err,
 			ReplyText: "只接受[1-999]之间的正整数报价狸",
 		}
@@ -481,6 +486,11 @@ func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []tgbotapi.Messa
 		if status.Code(err) == codes.NotFound {
 			return nil, Error{InnerError: err,
 				ReplyText: "请先登记你的岛屿狸。\n本bot 原本是为交换Nintendo Switch Friend Code而生。\n所以建议先/addfc 登记fc，再/addisland 登记岛屿，再/dtcj 发布价格。\n具体命令帮助请/help",
+			}
+		}
+		if err.Error() == "buy price out of range" {
+			return nil, Error{InnerError: err,
+				ReplyText: "周日进价的范围应该是[90, 110]狸。",
 			}
 		}
 		return nil, Error{InnerError: err,
@@ -539,8 +549,13 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 	if len(argstr) != 0 {
 		prices, err = makeWeeklyPrice(argstr, island.Timezone, weekStartDate, weekEndDate)
 		if err != nil {
+			if err.Error() == "buy price out of range" {
+				return nil, Error{InnerError: err,
+					ReplyText: "更新一周报价时出错狸。周日买入价格取值范围在[90, 110]",
+				}
+			}
 			return nil, Error{InnerError: err,
-				ReplyText: "更新一周报价时出错狸，请确认格式：\n[买入价] [上午价/下午价]……\n价格范围[1, 999]",
+				ReplyText: "更新一周报价时出错狸。请从周日进价开始，依次输入每一轮价格，逗号分割。\n举例：\n/weekprice 90,100,150……\n价格范围[1, 999]",
 			}
 		}
 	}
@@ -668,6 +683,9 @@ func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, en
 	for i := 0; i < len(intPrice); i++ {
 		if i == 0 {
 			if intPrice[i] > 0 {
+				if intPrice[i] < 90 && intPrice[i] > 110 {
+					return nil, errors.New("buy price out of range")
+				}
 				priceHistory = append(priceHistory, storage.TurnipPrice{Date: startDate.Add(5 * time.Hour), Price: intPrice[i], Timezone: islandTimezone})
 			}
 			startDate = startDate.AddDate(0, 0, 1)
