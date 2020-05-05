@@ -475,7 +475,7 @@ func sendNotify(ctx context.Context, client *firestore.Client, queue *storage.On
 			_logger.Error().Err(err).Msg("notify next failed")
 		}
 	}
-	for i := 0; i < 3 && i < queue.Len(); i++ {
+	for i := 0; i < 2 && i < queue.Len(); i++ {
 		var sorryBtn = tgbotapi.NewInlineKeyboardButtonData("抱歉不能来了……", "/sorry_"+queue.ID)
 		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(sorryBtn))
