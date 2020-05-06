@@ -261,14 +261,14 @@ func cmdJoinedQueue(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageC
 	uid := int64(message.From.ID)
 	queues, err := storage.GetJoinedQueue(ctx, uid)
 	if err != nil {
-		_logger.Error().Err(err).Msg("cmdMyQueue newClient")
+		_logger.Error().Err(err).Msg("GetJoinedQueue")
 		return nil, Error{InnerError: err,
 			ReplyText: "查询队列时出错了",
 		}
 	}
 	if queues == nil || len(queues) == 0 {
-		_logger.Error().Err(err).Msg("cmdMyQueue newClient")
-		return nil, Error{InnerError: err,
+		_logger.Warn().Msg("GetJoinedQueue not in any queue")
+		return nil, Error{InnerError: nil,
 			ReplyText: "您没有加入任何队列",
 		}
 	}

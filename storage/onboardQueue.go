@@ -30,7 +30,7 @@ type OnboardQueue struct {
 }
 
 // GetJoinedQueue return joined onboard queue
-func GetJoinedQueue(ctx context.Context, uid int64) (queue []*OnboardQueue, err error) {
+func GetJoinedQueue(ctx context.Context, uid int64) (queue []OnboardQueue, err error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
 		return
@@ -45,15 +45,13 @@ func GetJoinedQueue(ctx context.Context, uid int64) (queue []*OnboardQueue, err 
 		if err != nil {
 			return nil, err
 		}
-		q := &OnboardQueue{}
-		if err = doc.DataTo(q); err != nil {
+		q := OnboardQueue{}
+		if err = doc.DataTo(&q); err != nil {
 			logger.Warn().Err(err).Msg("GetJoinedQueue")
 			continue
 		}
-		if q != nil {
-			q.ID = doc.Ref.ID
-			queue = append(queue, q)
-		}
+		q.ID = doc.Ref.ID
+		queue = append(queue, q)
 	}
 	return queue, nil
 }
