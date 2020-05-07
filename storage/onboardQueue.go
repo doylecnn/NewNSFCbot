@@ -157,6 +157,7 @@ func (q *OnboardQueue) Remove(ctx context.Context, client *firestore.Client, uid
 	var inQueue = false
 	var onLand = false
 	var deleteItem guest
+	var onLandIdx int = -1
 	for _, p := range q.Queue {
 		if p.UID == uid {
 			deleteItem = p
@@ -165,9 +166,10 @@ func (q *OnboardQueue) Remove(ctx context.Context, client *firestore.Client, uid
 		}
 	}
 	if !inQueue {
-		for _, p := range q.Landed {
+		for i, p := range q.Landed {
 			if p.UID == uid {
 				deleteItem = p
+				onLandIdx = i
 				onLand = true
 				break
 			}
@@ -193,10 +195,12 @@ func (q *OnboardQueue) Remove(ctx context.Context, client *firestore.Client, uid
 			q.Queue = []guest{}
 		}
 	}
-	if onLand {
+	if onLand && onLandIdx > -1 {
 		if len(q.Landed) > 1 {
-			copy(q.Landed[0:], q.Landed[1:])
-			q.Landed = q.Landed[:len(q.Landed)-1]
+			l := len(q.Landed) - 1
+			q.Landed[onLandIdx] = q.Landed[l]
+			q.Landed[l] = guest{}
+			q.Landed = q.Landed[:l]
 		} else {
 			q.Landed = []guest{}
 		}
