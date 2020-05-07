@@ -154,25 +154,26 @@ func (q *OnboardQueue) Remove(ctx context.Context, client *firestore.Client, uid
 	if q.Dismissed {
 		return errors.New("queue has been dismissed")
 	}
-	var exists = false
+	var inQueue = false
+	var onLand = false
 	var deleteItem guest
 	for _, p := range q.Queue {
 		if p.UID == uid {
 			deleteItem = p
-			exists = true
+			inQueue = true
 			break
 		}
 	}
-	if !exists {
+	if !inQueue {
 		for _, p := range q.Landed {
 			if p.UID == uid {
 				deleteItem = p
-				exists = true
+				onLand = true
 				break
 			}
 		}
 	}
-	if !exists {
+	if !inQueue && !onLand {
 		return errors.New("not join in this queue")
 	}
 	co := client.Doc("onboardQueues/" + q.ID)
@@ -184,17 +185,21 @@ func (q *OnboardQueue) Remove(ctx context.Context, client *firestore.Client, uid
 	if err != nil {
 		return
 	}
-	if len(q.Queue) > 1 {
-		copy(q.Queue[0:], q.Queue[1:])
-		q.Queue = q.Queue[:len(q.Queue)-1]
-	} else {
-		q.Queue = []guest{}
+	if inQueue {
+		if len(q.Queue) > 1 {
+			copy(q.Queue[0:], q.Queue[1:])
+			q.Queue = q.Queue[:len(q.Queue)-1]
+		} else {
+			q.Queue = []guest{}
+		}
 	}
-	if len(q.Landed) > 1 {
-		copy(q.Landed[0:], q.Landed[1:])
-		q.Landed = q.Landed[:len(q.Landed)-1]
-	} else {
-		q.Landed = []guest{}
+	if onLand {
+		if len(q.Landed) > 1 {
+			copy(q.Landed[0:], q.Landed[1:])
+			q.Landed = q.Landed[:len(q.Landed)-1]
+		} else {
+			q.Landed = []guest{}
+		}
 	}
 	return
 }
@@ -224,8 +229,12 @@ func (q *OnboardQueue) Next(ctx context.Context, client *firestore.Client) (chat
 	}
 
 	q.Landed = append(q.Landed, g)
-	copy(q.Queue[0:], q.Queue[1:])
-	q.Queue = q.Queue[:len(q.Queue)-1]
+	if len(q.Queue) > 1 {
+		copy(q.Queue[0:], q.Queue[1:])
+		q.Queue = q.Queue[:len(q.Queue)-1]
+	} else {
+		q.Queue = []guest{}
+	}
 
 	return
 }
