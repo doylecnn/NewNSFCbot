@@ -637,6 +637,8 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 	}
 	_, _, changed, err := getTopPriceUsersAndLowestPriceUser(ctx, message.Chat.ID, locNow)
 	if err != nil {
+		_logger.Warn().Err(err).Send()
+		err = nil
 		replyMessage = []tgbotapi.MessageConfig{{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID:              message.Chat.ID,
