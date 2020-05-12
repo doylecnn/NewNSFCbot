@@ -384,7 +384,7 @@ func callbackQueryNextQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 				ShowAlert:       false,
 			})
 		} else if queue.LandedLen() > queue.MaxGuestCount {
-			_logger.Error().Err(err).Msg("island is full")
+			_logger.Warn().Msg("island is full")
 			tgbot.AnswerCallbackQuery(tgbotapi.CallbackConfig{
 				CallbackQueryID: query.ID,
 				Text:            "请注意，已超过同时登岛人数上限",

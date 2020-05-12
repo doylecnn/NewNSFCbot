@@ -2,7 +2,6 @@ package stackdriverhook
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -53,17 +52,10 @@ func (sw *StackdriverLoggingWriter) WriteLevel(level zerolog.Level, p []byte) (i
 	} else {
 		sw.logger.Log(logging.Entry{Payload: rawJSON(p), Severity: severity})
 		sw.logger.Log(logging.Entry{Payload: map[string]string{"stack trace": string(sw.getStackTrace())}, Severity: severity})
-		var m map[string]interface{} = make(map[string]interface{})
-		if jsonUnmarshalError := json.Unmarshal(p, &m); jsonUnmarshalError == nil {
-			sw.errorClient.ReportSync(context.Background(), errorreporting.Entry{
-				Error: errors.New(m["error"].(string)),
-				Stack: sw.getStackTrace(),
-			})
-		} else {
-			sw.logger.Log(logging.Entry{Payload: rawJSON(p), Severity: severity})
-			sw.logger.Log(logging.Entry{Payload: map[string]string{"error": fmt.Sprintf("errorreporting failed. error: %v", jsonUnmarshalError),
-				"stack trace": string(sw.getStackTrace())}, Severity: severity})
-		}
+		sw.errorClient.ReportSync(context.Background(), errorreporting.Entry{
+			Error: errors.New(string(rawJSON(p))),
+			Stack: sw.getStackTrace(),
+		})
 	}
 
 	return len(p), nil
