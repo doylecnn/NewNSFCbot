@@ -425,6 +425,11 @@ func sendNotify(ctx context.Context, client *firestore.Client, queue *storage.On
 		tgbotapi.NewInlineKeyboardRow(doneBtn),
 		tgbotapi.NewInlineKeyboardRow(sorryBtn))
 	var replymessages []tgbotapi.MessageConfig
+	var queueType string
+	if queue.IsAuto {
+		queueType = "\n本次排队是自助队列，当您离岛时，需要您主动点击“我要回家啦！”按钮"
+	}
+	var replyText = fmt.Sprintf("轮到你了！\n目标岛屿：%s\n密码：*%s*\n%s\n如果不能前往，请务必和岛主联系！%s", queue.Name, queue.Password, markdownSafe(queue.IslandInfo), queueType)
 	if queue.IsAuto && queue.LandedLen() < queue.MaxGuestCount {
 		batch := client.Batch()
 		i := 0
@@ -436,7 +441,7 @@ func sendNotify(ctx context.Context, client *firestore.Client, queue *storage.On
 					ChatID:      chatID,
 					ReplyMarkup: replyMarkup,
 				},
-				Text:      fmt.Sprintf("轮到你了！\n密码：*%s*\n%s\n如果不能前往，请务必和岛主联系！", queue.Password, markdownSafe(queue.IslandInfo)),
+				Text:      replyText,
 				ParseMode: "MarkdownV2",
 			}
 			replymessages = append(replymessages, m)
@@ -465,7 +470,7 @@ func sendNotify(ctx context.Context, client *firestore.Client, queue *storage.On
 				ChatID:      chatID,
 				ReplyMarkup: replyMarkup,
 			},
-			Text:      fmt.Sprintf("轮到你了！\n密码：*%s*\n%s\n如果不能前往，请务必和岛主联系！", queue.Password, markdownSafe(queue.IslandInfo)),
+			Text:      replyText,
 			ParseMode: "MarkdownV2",
 		}}
 	}
@@ -629,7 +634,15 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 	if err != nil {
 		t++
 	}
-	if !queue.IsAuto {
+	if queue.IsAuto && queue.LandedLen() < queue.MaxGuestCount {
+		sendNotify(ctx, client, queue)
+	} else {
+		var queueType string
+		if queue.IsAuto {
+			queueType = "自助队列"
+		} else {
+			queueType = "岛主手动控制队列"
+		}
 		var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", fmt.Sprintf("/position_%s|%d", queue.ID, time.Now().Unix()))
 		var leaveBtn = tgbotapi.NewInlineKeyboardButtonData("离开队列："+queue.Name, "/leave_"+queue.ID)
 		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, leaveBtn))
@@ -638,13 +651,13 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 				ChatID:      uid,
 				ReplyMarkup: replyMarkup,
 			},
-			Text: fmt.Sprintf("正在队列：%s 中排队，当前位置：%d/%d。\n当前岛上有 %d 个客人", queue.Name, l, t, queue.LandedLen()),
+			Text: fmt.Sprintf("已加入前往 %s 的队列中排队，本队列为 %s ，当前位置：%d/%d。\n当前岛上有 %d 个客人", queue.Name, queueType, l, t, queue.LandedLen()),
 		})
 		sentMsg, err := tgbot.Send(tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID: queue.OwnerID,
 			},
-			Text: fmt.Sprintf("@%s 加入了队列", username),
+			Text: fmt.Sprintf("@%s 加入了您创建的队列", username),
 		})
 		if err != nil {
 			_logger.Error().Err(err).Msg("send msg failed")
@@ -654,8 +667,6 @@ func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbot
 				tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(sentMsg.Chat.ID, sentMsg.MessageID))
 			}()
 		}
-	} else if queue.IsAuto && queue.LandedLen() < queue.MaxGuestCount {
-		sendNotify(ctx, client, queue)
 	}
 	return tgbotapi.CallbackConfig{
 		CallbackQueryID: query.ID,
