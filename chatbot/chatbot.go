@@ -177,7 +177,6 @@ func NewChatBot(token, domain, appID, projectID, port string, adminID int) ChatB
 	// queue
 	router.HandleFunc("queue", cmdOpenIslandQueue)
 	router.HandleFunc("myqueue", cmdMyQueue)
-	//router.HandleFunc("updatepassword", cmdUpdatePassword) 私聊直接回复特定消息触发
 	router.HandleFunc("list", cmdJoinedQueue)
 	router.HandleFunc("dismiss", cmdDismissIslandQueue)
 
@@ -263,6 +262,9 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 			if message != nil {
 				isEditedMessage = true
 			}
+		}
+		if message.From.IsBot {
+			continue
 		}
 		if inlineQuery != nil {
 			c.HandleInlineQuery(inlineQuery)
@@ -446,64 +448,66 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 						}
 					}
 				}
-			} else if message != nil && message.LeftChatMember != nil {
-				if message.Chat.IsPrivate() {
-					continue
+			}
+		} else if message != nil && message.LeftChatMember != nil {
+			if message.Chat.IsPrivate() {
+				continue
+			}
+			c.logger.Info().
+				Int("uid", message.LeftChatMember.ID).
+				Str("name", message.LeftChatMember.FirstName+" "+message.LeftChatMember.LastName+"("+message.LeftChatMember.UserName+")").
+				Int64("gid", message.Chat.ID).
+				Str("group", message.Chat.Title).
+				Msg("user left group")
+			if message.Chat.IsPrivate() {
+				continue
+			}
+			var groupID int64 = message.Chat.ID
+			ctx := context.Background()
+			if err := storage.RemoveGroupIDFromUserGroupIDs(ctx, message.From.ID, groupID); err != nil {
+				c.logger.Error().Err(err).Msg("remove groupid from user's groupids failed")
+			}
+		} else if message != nil && message.NewChatMembers != nil && len(*message.NewChatMembers) > 0 {
+			if message.Chat.IsPrivate() {
+				continue
+			}
+			ctx := context.Background()
+			g := storage.Group{ID: message.Chat.ID, Type: message.Chat.Type, Title: message.Chat.Title}
+			og, err := storage.GetGroup(ctx, g.ID)
+			if err != nil {
+				if status.Code(err) == codes.NotFound {
+					g.Set(ctx)
+				} else {
+					c.logger.Error().Err(err).Msg("get group failed")
 				}
+			} else {
+				if og.Title != g.Title || og.Type != g.Type {
+					g.Update(ctx)
+				}
+			}
+			for _, u := range *message.NewChatMembers {
 				c.logger.Info().
-					Int("uid", message.LeftChatMember.ID).
-					Str("name", message.LeftChatMember.FirstName+" "+message.LeftChatMember.LastName+"("+message.LeftChatMember.UserName+")").
+					Int("uid", u.ID).
+					Str("name", u.FirstName+" "+u.LastName+"("+u.UserName+")").
 					Int64("gid", message.Chat.ID).
 					Str("group", message.Chat.Title).
-					Msg("user left group")
-				if message.Chat.IsPrivate() {
-					continue
-				}
-				var groupID int64 = message.Chat.ID
-				ctx := context.Background()
-				if err := storage.RemoveGroupIDFromUserGroupIDs(ctx, message.From.ID, groupID); err != nil {
-					c.logger.Error().Err(err).Msg("remove groupid from user's groupids failed")
-				}
-			} else if message != nil && message.NewChatMembers != nil && len(*message.NewChatMembers) > 0 {
-				if message.Chat.IsPrivate() {
-					continue
-				}
-				ctx := context.Background()
-				g := storage.Group{ID: message.Chat.ID, Type: message.Chat.Type, Title: message.Chat.Title}
-				og, err := storage.GetGroup(ctx, g.ID)
+					Msg("user joined group")
+				u, err := storage.GetUser(ctx, u.ID, g.ID)
 				if err != nil {
-					if status.Code(err) == codes.NotFound {
-						g.Set(ctx)
-					} else {
-						c.logger.Error().Err(err).Msg("get group failed")
-					}
+					c.logger.Error().Err(err).Msg("get user failed")
 				} else {
-					if og.Title != g.Title || og.Type != g.Type {
-						g.Update(ctx)
-					}
-				}
-				for _, u := range *message.NewChatMembers {
-					c.logger.Info().
-						Int("uid", u.ID).
-						Str("name", u.FirstName+" "+u.LastName+"("+u.UserName+")").
-						Int64("gid", message.Chat.ID).
-						Str("group", message.Chat.Title).
-						Msg("user joined group")
-					u, err := storage.GetUser(ctx, u.ID, g.ID)
-					if err != nil {
-						c.logger.Error().Err(err).Msg("get user failed")
+					if len(u.GroupIDs) > 0 {
+						u.GroupIDs = append(u.GroupIDs, g.ID)
 					} else {
-						if len(u.GroupIDs) > 0 {
-							u.GroupIDs = append(u.GroupIDs, g.ID)
-						} else {
-							u.GroupIDs = []int64{g.ID}
-						}
-						if err = storage.AddGroupIDToUserGroupIDs(ctx, u.ID, g.ID); err != nil {
-							c.logger.Error().Err(err).Msg("add groupid to user's groupids faild")
-						}
+						u.GroupIDs = []int64{g.ID}
+					}
+					if err = storage.AddGroupIDToUserGroupIDs(ctx, u.ID, g.ID); err != nil {
+						c.logger.Error().Err(err).Msg("add groupid to user's groupids faild")
 					}
 				}
 			}
+		} else if message != nil {
+			_logger.Debug().Str("text", message.Text).Msg("recv new message")
 		}
 	}
 }

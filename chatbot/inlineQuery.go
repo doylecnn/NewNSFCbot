@@ -47,8 +47,8 @@ func inlineQueryShareQueue(query *tgbotapi.InlineQuery) (rst *tgbotapi.InlineCon
 	if island.OnBoardQueueID != queueID {
 		return nil, errors.New("not island owner")
 	}
-	r := tgbotapi.NewInlineQueryResultArticle(query.ID, fmt.Sprintf("分享前往您的岛屿 %s 的队列", island.Name), fmt.Sprintf("邀请您加入前往 %s 的队列\n本次信息：%s", island.Name, island.Info))
-	var joinBtn = tgbotapi.NewInlineKeyboardButtonData("加入队列", "/join_"+queueID)
+	r := tgbotapi.NewInlineQueryResultArticle(query.ID, fmt.Sprintf("分享前往您的岛屿 %s 的队列", island.Name), fmt.Sprintf("邀请您加入前往 %s 的队列\n本次信息：%s\n点击“加入队列”按钮后，请再点击“start”按钮", island.Name, island.Info))
+	var joinBtn = tgbotapi.NewInlineKeyboardButtonURL("加入队列", "https://t.me/NS_FC_bot?start=join_"+queueID)
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(joinBtn))
 	r.ReplyMarkup = &replyMarkup
 	return &tgbotapi.InlineConfig{

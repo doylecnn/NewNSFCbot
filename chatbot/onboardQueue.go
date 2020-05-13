@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/firestore"
 	"github.com/doylecnn/new-nsfc-bot/storage"
@@ -17,6 +18,13 @@ import (
 func cmdStart(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
 	if !message.Chat.IsPrivate() {
 		return
+	}
+	var argstr = message.CommandArguments()
+	if len(argstr) > 0 {
+		args := strings.SplitN(argstr, "_", 2)
+		if args[0] == "join" {
+			return cmdJoinQueue(message, args[1])
+		}
 	}
 	return []tgbotapi.MessageConfig{{
 		BaseChat: tgbotapi.BaseChat{
@@ -251,6 +259,86 @@ func notifyNewPassword(queue *storage.OnboardQueue) {
 			})
 		}
 	}
+}
+func cmdJoinQueue(message *tgbotapi.Message, queueID string) (replyMessage []tgbotapi.MessageConfig, err error) {
+	if !message.Chat.IsPrivate() {
+		return
+	}
+	uid := int64(message.From.ID)
+	username := message.From.UserName
+	if len(username) == 0 {
+		username = message.From.FirstName
+	}
+	ctx := context.Background()
+	client, err := firestore.NewClient(ctx, _projectID)
+	if err != nil {
+		_logger.Error().Err(err).Msg("create firestore client failed")
+		return nil, Error{InnerError: err,
+			ReplyText: "加入队列失败"}
+	}
+	defer client.Close()
+	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return []tgbotapi.MessageConfig{tgbotapi.NewMessage(message.Chat.ID, "队列已取消")}, nil
+		}
+		_logger.Error().Err(err).Msg("query queue failed")
+		return nil, Error{InnerError: err,
+			ReplyText: "加入队列失败"}
+	}
+	if queue.OwnerID == uid {
+		return []tgbotapi.MessageConfig{tgbotapi.NewMessage(message.Chat.ID, "自己不用排自己的队伍狸……")}, nil
+	}
+	if err = queue.Append(ctx, client, uid, username); err != nil {
+		if err.Error() == "already in this queue" {
+			return []tgbotapi.MessageConfig{tgbotapi.NewMessage(message.Chat.ID, "您已经加入了这个队列")}, nil
+		} else if err.Error() == "already land island" {
+			return []tgbotapi.MessageConfig{tgbotapi.NewMessage(message.Chat.ID, "请离岛后再重新排队")}, nil
+		}
+		_logger.Error().Err(err).Msg("append queue failed")
+		return nil, Error{InnerError: err,
+			ReplyText: "加入队列失败"}
+	}
+	t := queue.Len()
+	l, err := queue.GetPosition(uid)
+	if err != nil {
+		t++
+	}
+	if queue.IsAuto && queue.LandedLen() < queue.MaxGuestCount {
+		sendNotify(ctx, client, queue)
+	} else {
+		var queueType string
+		if queue.IsAuto {
+			queueType = "自助队列"
+		} else {
+			queueType = "岛主手动控制队列"
+		}
+		var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", fmt.Sprintf("/position_%s|%d", queue.ID, time.Now().Unix()))
+		var leaveBtn = tgbotapi.NewInlineKeyboardButtonData("离开队列："+queue.Name, "/leave_"+queue.ID)
+		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, leaveBtn))
+		tgbot.Send(tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:      uid,
+				ReplyMarkup: replyMarkup,
+			},
+			Text: fmt.Sprintf("已加入前往 %s 的队列中排队，本队列为 %s ，当前位置：%d/%d。\n当前岛上有 %d 个客人", queue.Name, queueType, l, t, queue.LandedLen()),
+		})
+		sentMsg, err := tgbot.Send(tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID: queue.OwnerID,
+			},
+			Text: fmt.Sprintf("@%s 加入了您创建的队列", username),
+		})
+		if err != nil {
+			_logger.Error().Err(err).Msg("send msg failed")
+		} else {
+			go func() {
+				time.Sleep(55 * time.Second)
+				tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(sentMsg.Chat.ID, sentMsg.MessageID))
+			}()
+		}
+	}
+	return nil, nil
 }
 
 func cmdJoinedQueue(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
