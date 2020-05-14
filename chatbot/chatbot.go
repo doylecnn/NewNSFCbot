@@ -263,13 +263,12 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 				isEditedMessage = true
 			}
 		}
-		if message.From.IsBot {
-			continue
-		}
 		if inlineQuery != nil {
 			c.HandleInlineQuery(inlineQuery)
 		} else if callbackQuery != nil {
 			c.HandleCallbackQuery(callbackQuery)
+		} else if message != nil && message.From.IsBot {
+			continue
 		} else if message != nil && message.Chat.IsPrivate() && !message.IsCommand() && message.ReplyToMessage != nil && message.ReplyToMessage.Text == "请输入新的密码" && message.ReplyToMessage.From.IsBot {
 			replies, e := cmdUpdatePassword(message)
 			if e != nil {

@@ -51,6 +51,9 @@ func (c ChatBot) HandleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	} else if strings.HasPrefix(query.Data, "/next_") {
 		processed = true
 		result, err = callbackQueryNextQueue(query)
+	} else if strings.HasPrefix(query.Data, "/toggle_") {
+		processed = true
+		result, err = callbackQueryToggleQueue(query)
 	} else if strings.HasPrefix(query.Data, "/coming_") {
 		processed = true
 		result, err = callbackQueryComing(query)
@@ -579,8 +582,16 @@ func callbackQueryDismissQueue(query *tgbotapi.CallbackQuery) (callbackConfig tg
 	defer client.Close()
 	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
 	if err != nil {
-		_logger.Error().Err(err).Msg("ClearOldOnboardQueue failed")
-		return
+		if status.Code(err) != codes.NotFound {
+			_logger.Error().Err(err).Msg("ClearOldOnboardQueue failed")
+			return
+		}
+		tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(int64(query.From.ID), query.Message.MessageID))
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "解散成功",
+			ShowAlert:       false,
+		}, nil
 	}
 	queue.Dismissed = true
 	for _, replyMsg := range notifyQueueDissmised(queue) {
@@ -596,6 +607,7 @@ func callbackQueryDismissQueue(query *tgbotapi.CallbackQuery) (callbackConfig tg
 		_logger.Error().Err(err).Int("uid", query.From.ID).
 			Int("msgID", query.Message.MessageID).Msg("edit message failed")
 	}
+	tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(int64(query.From.ID), query.Message.MessageID))
 	return tgbotapi.CallbackConfig{
 		CallbackQueryID: query.ID,
 		Text:            "解散成功",
@@ -842,9 +854,18 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 	var listBtn = tgbotapi.NewInlineKeyboardButtonData("查看队列", "/showqueuemember_"+queue.ID)
 	var updatePasswordBtn = tgbotapi.NewInlineKeyboardButtonData("修改密码", "/updatepassword_"+queue.ID)
 	var nextBtn = tgbotapi.NewInlineKeyboardButtonData("有请下一位", "/next_"+queue.ID)
+	var toggleQueueTypeBtnText string
+	if queue.IsAuto {
+		toggleQueueTypeBtnText = "切换为手动队列"
+	} else {
+		toggleQueueTypeBtnText = "切换为自动队列"
+	}
+	var toggleQueueTypeBtn = tgbotapi.NewInlineKeyboardButtonData(toggleQueueTypeBtnText, "/toggle_"+queue.ID)
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(shareBtn, dismissBtn),
 		tgbotapi.NewInlineKeyboardRow(listBtn, updatePasswordBtn),
-		tgbotapi.NewInlineKeyboardRow(nextBtn))
+		tgbotapi.NewInlineKeyboardRow(nextBtn),
+		tgbotapi.NewInlineKeyboardRow(toggleQueueTypeBtn),
+	)
 
 	_, err = tgbot.Send(tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
@@ -1078,8 +1099,102 @@ func callbackQueryDeleteFriendCode(query *tgbotapi.CallbackQuery) (callbackConfi
 	return
 }
 
+func callbackQueryToggleQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
+	queueID := query.Data[8:]
+	uid := query.From.ID
+	ctx := context.Background()
+	client, err := firestore.NewClient(ctx, _projectID)
+	if err != nil {
+		_logger.Error().Err(err).Msg("create firestore client failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	defer client.Close()
+	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "队列已取消",
+				ShowAlert:       false,
+			}, nil
+		}
+		_logger.Error().Err(err).Msg("query queue failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	var replyText = "您修改了队列类型，现在队列是："
+	if queue.IsAuto {
+		queue.IsAuto = false
+		queue.MaxGuestCount = 0
+		replyText += "手动队列"
+	} else {
+		queue.IsAuto = true
+		queue.MaxGuestCount = queue.LandedLen()
+		if queue.MaxGuestCount == 0 {
+			queue.MaxGuestCount = 2
+		} else if queue.MaxGuestCount > 7 {
+			queue.MaxGuestCount = 7
+		}
+		replyText += fmt.Sprintf("自助队列, 最大在岛人数为 %d", queue.MaxGuestCount)
+	}
+	docRef := client.Doc("onboardQueues/" + queueID)
+	_, err = docRef.Update(ctx, []firestore.Update{
+		{Path: "IsAuto", Value: queue.IsAuto},
+		{Path: "MaxGuestCount", Value: queue.MaxGuestCount},
+	})
+	if err != nil {
+		_logger.Error().Err(err).Msg("toggle queue type failed")
+		return
+	}
+
+	replyText += fmt.Sprintf("\n队列剩余：%d\n当前在岛：%d", queue.Len(), queue.LandedLen())
+
+	var shareBtn = tgbotapi.NewInlineKeyboardButtonSwitch("分享队列："+queue.Name, "/share_"+queue.ID)
+	var dismissBtn = tgbotapi.NewInlineKeyboardButtonData("解散队列", "/dismiss_"+queue.ID)
+	var listBtn = tgbotapi.NewInlineKeyboardButtonData("查看队列", "/showqueuemember_"+queue.ID)
+	var updatePasswordBtn = tgbotapi.NewInlineKeyboardButtonData("修改密码", "/updatepassword_"+queue.ID)
+	var nextBtn = tgbotapi.NewInlineKeyboardButtonData("有请下一位", "/next_"+queue.ID)
+	var toggleQueueTypeBtnText string
+	if queue.IsAuto {
+		toggleQueueTypeBtnText = "切换为手动队列"
+	} else {
+		toggleQueueTypeBtnText = "切换为自动队列"
+	}
+	var toggleQueueTypeBtn = tgbotapi.NewInlineKeyboardButtonData(toggleQueueTypeBtnText, "/toggle_"+queue.ID)
+	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(shareBtn, dismissBtn),
+		tgbotapi.NewInlineKeyboardRow(listBtn, updatePasswordBtn),
+		tgbotapi.NewInlineKeyboardRow(nextBtn),
+		tgbotapi.NewInlineKeyboardRow(toggleQueueTypeBtn),
+	)
+
+	_, err = tgbot.Send(tgbotapi.MessageConfig{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID:      queue.OwnerID,
+			ReplyMarkup: replyMarkup,
+		},
+		Text: replyText,
+	})
+	if err != nil {
+		_logger.Error().Err(err).Int("uid", uid).
+			Int("msgID", query.Message.MessageID).
+			Str("action", "toggle queue type").
+			Msg("message send failed")
+		return
+	}
+	err = errors.New("no_alert")
+
+	return
+}
+
 func callbackQueryDonate(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
-	var payMethod = string(query.Data[8:])
+	var payMethod = query.Data[8:]
 	switch payMethod {
 	case "alipay":
 		tgbot.Send(tgbotapi.EditMessageTextConfig{

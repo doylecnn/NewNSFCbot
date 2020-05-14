@@ -113,9 +113,18 @@ func cmdMyQueue(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfi
 	var listBtn = tgbotapi.NewInlineKeyboardButtonData("查看队列", "/showqueuemember_"+queue.ID)
 	var updatePasswordBtn = tgbotapi.NewInlineKeyboardButtonData("修改密码", "/updatepassword_"+queue.ID)
 	var nextBtn = tgbotapi.NewInlineKeyboardButtonData("有请下一位", "/next_"+queue.ID)
+	var toggleQueueTypeBtnText string
+	if queue.IsAuto {
+		toggleQueueTypeBtnText = "切换为手动队列"
+	} else {
+		toggleQueueTypeBtnText = "切换为自动队列"
+	}
+	var toggleQueueTypeBtn = tgbotapi.NewInlineKeyboardButtonData(toggleQueueTypeBtnText, "/toggle_"+queue.ID)
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(shareBtn, dismissBtn),
 		tgbotapi.NewInlineKeyboardRow(listBtn, updatePasswordBtn),
-		tgbotapi.NewInlineKeyboardRow(nextBtn))
+		tgbotapi.NewInlineKeyboardRow(nextBtn),
+		tgbotapi.NewInlineKeyboardRow(toggleQueueTypeBtn),
+	)
 	var replyText = fmt.Sprintf("队列已创建成功，密码：%s\n请使用分享按钮选择要分享排队的群/朋友\n*选择群组后请等待 telegram 弹出分享提示后点击提示！*\n/updatepassword 新密码 更新密码\n/dismiss 立即解散队列\n/myqueue 列出创建的队列\n*请使用下面的按钮操作*", queue.Password)
 
 	return []tgbotapi.MessageConfig{{
@@ -219,9 +228,18 @@ func cmdUpdatePassword(message *tgbotapi.Message) (replyMessage []tgbotapi.Messa
 	var listBtn = tgbotapi.NewInlineKeyboardButtonData("查看队列", "/showqueuemember_"+queue.ID)
 	var updatePasswordBtn = tgbotapi.NewInlineKeyboardButtonData("修改密码", "/updatepassword_"+queue.ID)
 	var nextBtn = tgbotapi.NewInlineKeyboardButtonData("有请下一位", "/next_"+queue.ID)
+	var toggleQueueTypeBtnText string
+	if queue.IsAuto {
+		toggleQueueTypeBtnText = "切换为手动队列"
+	} else {
+		toggleQueueTypeBtnText = "切换为自动队列"
+	}
+	var toggleQueueTypeBtn = tgbotapi.NewInlineKeyboardButtonData(toggleQueueTypeBtnText, "/toggle_"+queue.ID)
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(shareBtn, dismissBtn),
 		tgbotapi.NewInlineKeyboardRow(listBtn, updatePasswordBtn),
-		tgbotapi.NewInlineKeyboardRow(nextBtn))
+		tgbotapi.NewInlineKeyboardRow(nextBtn),
+		tgbotapi.NewInlineKeyboardRow(toggleQueueTypeBtn),
+	)
 	var replyText = fmt.Sprintf("队列已创建成功，密码：%s\n请使用分享按钮选择要分享排队的群/朋友\n*选择群组后请等待 telegram 弹出分享提示后点击提示！*\n/dismiss 立即解散队列\n/myqueue 列出自己创建的队列\n*请使用下面的按钮操作*", queue.Password)
 	tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(message.Chat.ID, message.ReplyToMessage.MessageID))
 	return []tgbotapi.MessageConfig{{
@@ -473,9 +491,17 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []tgbotapi.Mess
 	var listBtn = tgbotapi.NewInlineKeyboardButtonData("查看队列", "/showqueuemember_"+queue.ID)
 	var updatePasswordBtn = tgbotapi.NewInlineKeyboardButtonData("修改密码", "/updatepassword_"+queue.ID)
 	var nextBtn = tgbotapi.NewInlineKeyboardButtonData("有请下一位", "/next_"+queue.ID)
+	var toggleQueueTypeBtnText string
+	if queue.IsAuto {
+		toggleQueueTypeBtnText = "切换为手动队列"
+	} else {
+		toggleQueueTypeBtnText = "切换为自动队列"
+	}
+	var toggleQueueTypeBtn = tgbotapi.NewInlineKeyboardButtonData(toggleQueueTypeBtnText, "/toggle_"+queue.ID)
 	var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(shareBtn, dismissBtn),
 		tgbotapi.NewInlineKeyboardRow(listBtn, updatePasswordBtn),
-		tgbotapi.NewInlineKeyboardRow(nextBtn))
+		tgbotapi.NewInlineKeyboardRow(nextBtn),
+		tgbotapi.NewInlineKeyboardRow(toggleQueueTypeBtn))
 	var replyText = fmt.Sprintf("队列已创建成功，密码：%s\n请使用分享按钮选择要分享排队的群/朋友\n*选择群组后请等待 telegram 弹出分享提示后点击提示！*\n/dismiss 立即解散队列\n/myqueue 列出自己创建的队列\n/comment 留下您的建议或意见\n/donate 您愿意的话可以捐助本项目\n*请使用下面的按钮操作*", queue.Password)
 
 	return []tgbotapi.MessageConfig{{
