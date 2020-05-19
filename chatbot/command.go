@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	fuzzy "github.com/doylecnn/go-fuzzywuzzy"
 	"github.com/doylecnn/new-nsfc-bot/storage"
@@ -146,4 +147,14 @@ func cmdSuggest(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfi
 				mostSuggestCommand.Command,
 				mostSuggestCommand.Description)}},
 		nil
+}
+
+func cleanCommandArguments(m *tgbotapi.Message) (args []string) {
+	var parts = strings.Split(m.CommandArguments(), " ")
+	for _, arg := range parts {
+		if len(arg) > 0 {
+			args = append(args, arg)
+		}
+	}
+	return
 }
