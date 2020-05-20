@@ -452,17 +452,19 @@ func sendNotify(ctx context.Context, client *firestore.Client, queue *storage.On
 				{Path: "landed", Value: firestore.ArrayUnion(guest)},
 			})
 		}
-		copy(queue.Queue[0:], queue.Queue[i:])
-		queue.Queue = queue.Queue[:len(queue.Queue)-i]
-		_, err := batch.Commit(ctx)
-		if err != nil {
-			// Handle any errors in an appropriate way, such as returning them.
-			_logger.Error().Err(err).Msg("An error has occurred when remove guest in queue")
+		if i > 0 {
+			copy(queue.Queue[0:], queue.Queue[i:])
+			queue.Queue = queue.Queue[:len(queue.Queue)-i]
+			_, err := batch.Commit(ctx)
+			if err != nil {
+				// Handle any errors in an appropriate way, such as returning them.
+				_logger.Error().Err(err).Msg("An error has occurred when remove guest in queue")
+			}
 		}
 	} else {
 		chatID, err = queue.Next(ctx, client)
 		if err != nil {
-			_logger.Error().Err(err).Msg("queue get next failed")
+			_logger.Info().Err(err).Msg("queue get next failed")
 			return
 		}
 		replymessages = []tgbotapi.MessageConfig{{
