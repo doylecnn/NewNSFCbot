@@ -447,57 +447,135 @@ func cmdListIslands(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageC
 }
 
 func cmdDTCPriceUpdate(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig, err error) {
-	pricestr := strings.TrimSpace(message.CommandArguments())
+	args := cleanCommandArguments(message)
 	uid := message.From.ID
-	if message.From.ID == botAdminID && message.Chat.IsPrivate() {
-		if strings.HasPrefix(pricestr, "#") {
-			args := strings.SplitN(pricestr, " ", 2)
-			uid, err = strconv.Atoi(args[0][1:])
-			if err != nil {
-				return
-			}
-			if len(args) > 1 {
-				pricestr = args[1]
-			} else {
-				pricestr = ""
-			}
-		}
-	}
-	if len(pricestr) == 0 {
+	if len(args) == 0 {
 		return cmdDTCMaxPriceInGroup(message)
 	}
 
-	price, err := strconv.ParseInt(pricestr, 10, 64)
-	if err != nil {
-		return nil, Error{InnerError: err,
-			ReplyText: "请检查参数，参数必须是数字狸",
-		}
-	}
-	if price < 1 || price > 999 {
-		return nil, Error{InnerError: err,
-			ReplyText: "只接受[1-999]之间的正整数报价狸",
-		}
-	}
-
 	ctx := context.Background()
-	err = storage.UpdateDTCPrice(ctx, uid, int(price))
-	if err != nil {
-		_logger.Error().Err(err).Msg("update island last price")
-		if status.Code(err) == codes.NotFound {
+	if len(args) == 1 {
+		price, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
 			return nil, Error{InnerError: err,
-				ReplyText: "请先登记你的岛屿狸。\n本bot 原本是为交换Nintendo Switch Friend Code而生。\n所以建议先/addfc 登记fc，再/addisland 登记岛屿，再/dtcj 发布价格。\n具体命令帮助请/help",
+				ReplyText: "请检查参数，参数必须是数字狸",
 			}
 		}
-		if err.Error() == "buy price out of range" {
+		if price < 1 || price > 999 {
 			return nil, Error{InnerError: err,
-				ReplyText: "周日进价的范围应该是[90, 110]狸。",
+				ReplyText: "只接受[1-999]之间的正整数报价狸",
 			}
 		}
-		return nil, Error{InnerError: err,
-			ReplyText: "更新报价时出错狸",
+
+		err = storage.UpdateDTCPrice(ctx, uid, int(price))
+		if err != nil {
+			_logger.Error().Err(err).Msg("update island last price")
+			if status.Code(err) == codes.NotFound {
+				return nil, Error{InnerError: err,
+					ReplyText: "请先登记你的岛屿狸。\n本bot 原本是为交换Nintendo Switch Friend Code而生。\n所以建议先/addfc 登记fc，再/addisland 登记岛屿，再/dtcj 发布价格。\n具体命令帮助请/help",
+				}
+			}
+			if err.Error() == "buy price out of range" {
+				return nil, Error{InnerError: err,
+					ReplyText: "周日进价的范围应该是[90, 110]狸。",
+				}
+			}
+			return nil, Error{InnerError: err,
+				ReplyText: "更新报价时出错狸",
+			}
 		}
+	} else if len(args)%2 == 0 {
+		var weekDayNames = []string{"SUN", "SUN_AM", "MON_AM", "MON_PM", "TUE_AM", "TUE_PM", "WED_AM", "WED_PM", "THU_AM", "THU_PM", "FRI_AM", "FRI_PM", "SAT_AM", "SAT_PM"}
+		var prices []int = make([]int, 13)
+		for i := 0; i < len(args); i += 2 {
+			price, err := strconv.ParseInt(args[i], 10, 64)
+			if err != nil {
+				return nil, Error{InnerError: err,
+					ReplyText: "请检查参数，参数必须是数字狸",
+				}
+			}
+			if price < 1 || price > 999 {
+				return nil, Error{InnerError: err,
+					ReplyText: "只接受[1-999]之间的正整数报价狸",
+				}
+			}
+			weekdayName := strings.ToUpper(args[i+1])
+			idx := 0
+			notFound := true
+			for ; idx < len(weekDayNames); idx++ {
+				if weekdayName == weekDayNames[idx] {
+					notFound = false
+					break
+				}
+			}
+			if notFound {
+				return nil, Error{InnerError: err,
+					ReplyText: "请输入正确的星期缩写",
+				}
+			}
+			if idx == 0 {
+				prices[idx] = int(price)
+			} else {
+				prices[idx-1] = int(price)
+			}
+		}
+		return combineWeeklyDTCPriceHistory(ctx, message, prices, uid)
 	}
 	return getWeeklyDTCPriceHistory(ctx, message, uid, "")
+}
+
+func combineWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, weekPrices []int, uid int) (replyMessage []tgbotapi.MessageConfig, err error) {
+	island, residentUID, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, Error{InnerError: err,
+				ReplyText: "请先登记你的岛屿狸。\n本bot 原本是为交换Nintendo Switch Friend Code而生。\n所以建议先/addfc 登记fc，再/addisland 登记岛屿，再/dtcj 发布价格。\n也可以先不添加FC 只添加岛屿信息。\n具体命令帮助请/help",
+			}
+		}
+		return nil, Error{InnerError: err,
+			ReplyText: "查找您的岛屿信息时出错狸",
+		}
+	}
+	if residentUID > 0 {
+		uid = residentUID
+	}
+	var nowLoc = time.Now().In(island.Timezone.Location())
+	if nowLoc.Hour() < 5 {
+		nowLoc = nowLoc.Add(-(time.Duration(nowLoc.Hour()+1) * time.Hour))
+	}
+	var weekStartDateLoc = nowLoc.AddDate(0, 0, 0-int(nowLoc.Weekday()))
+	weekStartDateLoc = time.Date(weekStartDateLoc.Year(), weekStartDateLoc.Month(), weekStartDateLoc.Day(), 0, 0, 0, 0, island.Timezone.Location())
+	var weekStartDate = weekStartDateLoc.UTC()
+	var weekEndDate = weekStartDate.AddDate(0, 0, 7)
+	priceHistory, err := storage.GetWeeklyDTCPriceHistory(ctx, uid, weekStartDate, weekEndDate)
+	if err != nil {
+		_logger.Error().Err(err).Msg("GetWeeklyDTCPriceHistory")
+		return nil, Error{InnerError: err,
+			ReplyText: "查找报价信息时出错狸",
+		}
+	}
+	for _, p := range priceHistory {
+		var price int
+		var idx int
+		if p.LocationDateTime().Weekday() == 0 {
+			price = p.Price
+			idx = 0
+		} else if p.LocationDateTime().Hour() < 12 {
+			price = p.Price
+			idx = int(p.Date.Weekday())*2 - 1
+		} else {
+			price = p.Price
+			idx = int(p.Date.Weekday()) * 2
+		}
+		if weekPrices[idx] == 0 {
+			weekPrices[idx] = price
+		}
+	}
+	var weekPriceStrings []string = make([]string, 13)
+	for i := 0; i < 13; i++ {
+		weekPriceStrings[i] = strconv.Itoa(weekPrices[i])
+	}
+	return getWeeklyDTCPriceHistory(ctx, message, uid, strings.Join(weekPriceStrings, ","))
 }
 
 // cmdDTCWeekPriceAndPredict 当周菜价回看/预测
@@ -523,6 +601,7 @@ func cmdDTCWeekPriceAndPredict(message *tgbotapi.Message) (replyMessage []tgbota
 }
 
 func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, uid int, argstr string) (replyMessage []tgbotapi.MessageConfig, err error) {
+	_logger.Info().Str("weekprices", argstr).Send()
 	island, residentUID, err := storage.GetAnimalCrossingIslandByUserID(ctx, uid)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
@@ -576,8 +655,12 @@ func getWeeklyDTCPriceHistory(ctx context.Context, message *tgbotapi.Message, ui
 				}
 			}
 			defer client.Close()
-			col := client.Collection(fmt.Sprintf("users/%d/games/animal_crossing/price_history", uid))
-			if err = storage.DeleteCollection(ctx, client, col, 10); err != nil {
+			batch := client.Batch()
+			for _, p := range priceHistory {
+				dr := client.Doc(p.Path)
+				batch.Delete(dr)
+			}
+			if _, err = batch.Commit(ctx); err != nil {
 				_logger.Error().Err(err).Msg("cmdDTCWeekPriceAndPredict")
 				return nil, Error{InnerError: err,
 					ReplyText: fmt.Sprintf("保存一周报价时出错狸：%v", err),
@@ -676,9 +759,13 @@ func makeWeeklyPrice(args string, islandTimezone storage.Timezone, startDate, en
 	}
 	var intPrice []int
 	for _, tp := range prices {
-		ip, err := strconv.Atoi(strings.TrimSpace(tp))
-		if ip < 0 || ip > 999 || err != nil {
-			return nil, errors.New("wrong format")
+		priceStr := strings.TrimSpace(tp)
+		var ip int
+		if len(priceStr) > 0 {
+			ip, err = strconv.Atoi(priceStr)
+			if ip < 0 || ip > 999 || err != nil {
+				return nil, errors.New("wrong format")
+			}
 		}
 		intPrice = append(intPrice, ip)
 	}
@@ -834,7 +921,7 @@ func cmdDTCMaxPriceInGroup(message *tgbotapi.Message) (replyMessage []tgbotapi.M
 func getTopPriceUsersAndLowestPriceUser(ctx context.Context, chatID int64, localtime time.Time) (topPriceUsers []storage.User, lowestPriceUsers []storage.User, changed bool, err error) {
 	group, err := storage.GetGroup(ctx, chatID)
 	if err != nil {
-		_logger.Error().Err(err).Msg("GetGroup")
+		_logger.Info().Err(err).Msg("GetGroup")
 		return nil, nil, false, err
 	}
 	users, err := storage.GetGroupUsers(ctx, chatID)
