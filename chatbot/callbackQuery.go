@@ -36,6 +36,9 @@ func (c ChatBot) HandleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	} else if strings.HasPrefix(query.Data, "/updatepassword_") {
 		processed = true
 		result, err = callbackQueryUpdateQueuePassword(query)
+	} else if strings.HasPrefix(query.Data, "/join_") {
+		processed = true
+		result, err = callbackQueryJoinQueue(query)
 	} else if strings.HasPrefix(query.Data, "/showqueuemember_") {
 		processed = true
 		result, err = callbackQueryShowQueueMembers(query)
@@ -181,6 +184,114 @@ func callbackQueryUpdateQueuePassword(query *tgbotapi.CallbackQuery) (callbackCo
 	return tgbotapi.CallbackConfig{
 		CallbackQueryID: query.ID,
 		Text:            "failed",
+		ShowAlert:       false,
+	}, nil
+}
+
+func callbackQueryJoinQueue(query *tgbotapi.CallbackQuery) (callbackConfig tgbotapi.CallbackConfig, err error) {
+	queueID := query.Data[6:]
+	uid := int64(query.From.ID)
+	username := query.From.UserName
+	if len(username) == 0 {
+		username = query.From.FirstName
+	}
+	ctx := context.Background()
+	client, err := firestore.NewClient(ctx, _projectID)
+	if err != nil {
+		_logger.Error().Err(err).Msg("create firestore client failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	defer client.Close()
+	queue, err := storage.GetOnboardQueue(ctx, client, queueID)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "队列已取消",
+				ShowAlert:       false,
+			}, nil
+		}
+		_logger.Error().Err(err).Msg("query queue failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	if queue.OwnerID == uid {
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "自己不用排自己的队伍狸……",
+			ShowAlert:       false,
+		}, nil
+	}
+	if err = queue.Append(ctx, client, uid, username); err != nil {
+		if err.Error() == "already in this queue" {
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "您已经加入了这个队列",
+				ShowAlert:       false,
+			}, nil
+		} else if err.Error() == "already land island" {
+			return tgbotapi.CallbackConfig{
+				CallbackQueryID: query.ID,
+				Text:            "请离岛后再重新排队",
+				ShowAlert:       false,
+			}, nil
+		}
+		_logger.Error().Err(err).Msg("append queue failed")
+		return tgbotapi.CallbackConfig{
+			CallbackQueryID: query.ID,
+			Text:            "failed",
+			ShowAlert:       false,
+		}, nil
+	}
+	t := queue.Len()
+	l, err := queue.GetPosition(uid)
+	if err != nil {
+		t++
+	}
+	if queue.IsAuto && queue.LandedLen() < queue.MaxGuestCount {
+		sendNotify(ctx, client, queue)
+	} else {
+		var queueType string
+		if queue.IsAuto {
+			queueType = "自助队列"
+		} else {
+			queueType = "岛主手动控制队列"
+		}
+		var myPositionBtn = tgbotapi.NewInlineKeyboardButtonData("我的位置？", fmt.Sprintf("/position_%s|%d", queue.ID, time.Now().Unix()))
+		var leaveBtn = tgbotapi.NewInlineKeyboardButtonData("离开队列："+queue.Name, "/leave_"+queue.ID)
+		var replyMarkup = tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(myPositionBtn, leaveBtn))
+		tgbot.Send(tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:      uid,
+				ReplyMarkup: replyMarkup,
+			},
+			Text: fmt.Sprintf("已加入前往 %s 的队列中排队，本队列为 %s ，当前位置：%d/%d。\n当前岛上有 %d 个客人", queue.Name, queueType, l, t, queue.LandedLen()),
+		})
+		sentMsg, err := tgbot.Send(tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID: queue.OwnerID,
+			},
+			Text: fmt.Sprintf("@%s 加入了您创建的队列", username),
+		})
+		if err != nil {
+			_logger.Error().Err(err).Msg("send msg failed")
+		} else {
+			go func() {
+				time.Sleep(55 * time.Second)
+				tgbot.DeleteMessage(tgbotapi.NewDeleteMessage(sentMsg.Chat.ID, sentMsg.MessageID))
+			}()
+		}
+	}
+	return tgbotapi.CallbackConfig{
+		CallbackQueryID: query.ID,
+		Text:            "success",
 		ShowAlert:       false,
 	}, nil
 }
@@ -839,7 +950,7 @@ func callbackQueryDoneOrSorry(query *tgbotapi.CallbackQuery) (callbackConfig tgb
 			MessageID:   query.Message.MessageID,
 			ReplyMarkup: &replyMarkupToQueueMember,
 		},
-		Text: "感谢您使用我的排队机器人。\n如果对使用有任何意见、建议、感想，请点击 /comments\n如果您愿意捐助我，请点击 /donate",
+		Text: "感谢您使用排队机器人。\n如果对使用有任何意见、建议、感想，请点击 /comments\n如果您愿意捐助我，请点击 /donate",
 	})
 	if err != nil {
 		_logger.Error().Err(err).Int("uid", query.From.ID).
