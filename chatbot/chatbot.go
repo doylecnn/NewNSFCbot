@@ -493,8 +493,13 @@ func (c ChatBot) messageHandlerWorker(updates chan tgbotapi.Update) {
 					Msg("user joined group")
 				u, err := storage.GetUser(ctx, u.ID, g.ID)
 				if err != nil {
-					c.logger.Error().Err(err).Msg("get user failed")
-				} else {
+					u, err = storage.GetUser(ctx, u.ID, 0)
+					if err != nil {
+						c.logger.Error().Err(err).Msg("get user failed")
+						continue
+					}
+				}
+				if err == nil {
 					if len(u.GroupIDs) > 0 {
 						u.GroupIDs = append(u.GroupIDs, g.ID)
 					} else {
