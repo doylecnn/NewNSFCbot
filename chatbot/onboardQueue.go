@@ -39,7 +39,7 @@ func cmdStart(message *tgbotapi.Message) (replyMessage []tgbotapi.MessageConfig,
 
 队列主：
 /queue [密码] 开启新的队列
-/queue [密码] [最大客人数] 开启新的队列，同时根据队列信息，半自动邀请下一位旅客（尚未实现）
+/queue [密码] [最大客人数] 开启新的队列，同时根据队列信息，半自动邀请下一位旅客
 /myqueue 列出自己创建的队列
 /dismiss 解散自己创建的队列
 
@@ -447,7 +447,7 @@ func cmdOpenIslandQueue(message *tgbotapi.Message) (replyMessage []tgbotapi.Mess
 	args := strings.Split(argstr, " ")
 	if len(args) == 0 {
 		return nil, Error{InnerError: err,
-			ReplyText: "/queue 至少需要一个参数，开岛密码。",
+			ReplyText: "/queue 指令至少需要一个参数：开岛密码。请使用下面格式：\n/queue [密码] 开启新的队列\n/queue [密码] [最大客人数] 开启新的队列，同时根据队列信息，半自动邀请下一位旅客",
 		}
 	}
 	password := args[0]
